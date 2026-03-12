@@ -10,6 +10,12 @@
 - **DDNS**：定时将当前公网 IP 更新到指定 CF A 记录
 - **SQLite**：映射与 DDNS 配置持久化
 
+## Web 管理界面（登录页）
+
+- 登录页采用现代化布局：左侧为大号 **SKYLINK** 品牌文案，右侧为登录卡片。
+- 未登录时隐藏顶部导航栏，登录页背景单独使用浅色渐变，便于与控制台其它页面区分。
+- 首次启动时随机密码仍通过服务日志打印，登录成功逻辑保持不变。
+
 ## 本地开发
 
 ### 依赖
@@ -58,8 +64,9 @@ docker run -d \
   -p 19080:19080 \
   -v "$(pwd)/data:/data" \
   -e SKYLINK_DB_PATH=/data/skylink.db \
-  -e CF_API_TOKEN="<your_cf_token>" \
-  -e CF_ZONE_ID="<optional_zone_id>" \
+  # 以下为可选：仅在需要 Cloudflare 功能时设置
+  # -e CF_API_TOKEN="<your_cf_token>" \
+  # -e CF_ZONE_ID="<optional_zone_id>" \
   queensu/skylink:latest
 ```
 
@@ -78,7 +85,6 @@ services:
       - ./data:/data
     environment:
       - SKYLINK_DB_PATH=/data/skylink.db
-      # 可选：CF_API_TOKEN、CF_ZONE_ID
     restart: unless-stopped
 ```
 
@@ -102,15 +108,6 @@ docker compose up -d
 - **修改密码**：登录后在「设置」页面修改；新密码会持久化到 SQLite（挂载 `./data` 目录即可持久化）。
 - **鉴权方式**：管理 API 需要 `Authorization: Bearer <密码>`。
 
-### 获取 Cloudflare 配置（`CF_API_TOKEN` / `CF_ZONE_ID`）
-
-- **CF_API_TOKEN**：
-  - Cloudflare 控制台 → 右上角头像 → **My Profile** → **API Tokens** → Create Token
-  - 权限建议：对应 Zone 的 **Zone.DNS Edit**（按最小权限原则）
-- **CF_ZONE_ID（可选）**：
-  - Cloudflare 控制台进入你的域名（Zone）→ 主页/概览页面通常能看到 **Zone ID**
-  - 也可以登录 SkyLink 后在 Cloudflare 页面调用 `/api/cf/zones` 查看每个 Zone 的 `id`
-
 ## GitHub Actions（Docker 镜像）
 
 仓库内置 Workflow：push 到 `main` 或手动触发时会构建并推送到 GHCR。
@@ -132,8 +129,6 @@ docker compose up -d
 | `SKYLINK_PROXY_PORT` | 反代监听端口，默认 18080 |
 | `SKYLINK_ADMIN_PORT` | 管理 API/GUI 端口，默认 19080 |
 | `SKYLINK_DB_PATH` | SQLite 路径，默认 `./data/skylink.db` |
-| `CF_API_TOKEN` | Cloudflare API Token（Zone.DNS Edit） |
-| `CF_ZONE_ID` | 默认 Zone ID（可选） |
 
 ### 与樱花 Frp 配合
 
