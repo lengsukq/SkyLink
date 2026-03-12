@@ -64,9 +64,6 @@ docker run -d \
   -p 19080:19080 \
   -v "$(pwd)/data:/data" \
   -e SKYLINK_DB_PATH=/data/skylink.db \
-  # 以下为可选：仅在需要 Cloudflare 功能时设置
-  # -e CF_API_TOKEN="<your_cf_token>" \
-  # -e CF_ZONE_ID="<optional_zone_id>" \
   queensu/skylink:latest
 ```
 
