@@ -102,6 +102,15 @@ docker compose up -d
 - **修改密码**：登录后在「设置」页面修改；新密码会持久化到 SQLite（挂载 `./data` 目录即可持久化）。
 - **鉴权方式**：管理 API 需要 `Authorization: Bearer <密码>`。
 
+### 获取 Cloudflare 配置（`CF_API_TOKEN` / `CF_ZONE_ID`）
+
+- **CF_API_TOKEN**：
+  - Cloudflare 控制台 → 右上角头像 → **My Profile** → **API Tokens** → Create Token
+  - 权限建议：对应 Zone 的 **Zone.DNS Edit**（按最小权限原则）
+- **CF_ZONE_ID（可选）**：
+  - Cloudflare 控制台进入你的域名（Zone）→ 主页/概览页面通常能看到 **Zone ID**
+  - 也可以登录 SkyLink 后在 Cloudflare 页面调用 `/api/cf/zones` 查看每个 Zone 的 `id`
+
 ## GitHub Actions（Docker 镜像）
 
 仓库内置 Workflow：push 到 `main` 或手动触发时会构建并推送到 GHCR。
