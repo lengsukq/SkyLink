@@ -16,8 +16,8 @@
           <router-view />
         </n-layout-content>
       </n-layout>
-    </n-config-provider>
-  </n-message-provider>
+    </n-message-provider>
+  </n-config-provider>
 </template>
 
 <script setup>

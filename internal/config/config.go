@@ -48,9 +48,6 @@ func Load(path string) (*App, *Cloudflare, error) {
 	if v := os.Getenv("SKYLINK_DB_PATH"); v != "" {
 		app.DBPath = v
 	}
-	if v := os.Getenv("SKYLINK_ADMIN_SECRET"); v != "" {
-		app.AdminSecret = v
-	}
 	if v := os.Getenv("CF_API_TOKEN"); v != "" {
 		cf.APIToken = v
 	}
@@ -73,9 +70,6 @@ func mergeApp(dst, src *App) {
 	}
 	if src.ConfigPath != "" {
 		dst.ConfigPath = src.ConfigPath
-	}
-	if src.AdminSecret != "" {
-		dst.AdminSecret = src.AdminSecret
 	}
 }
 

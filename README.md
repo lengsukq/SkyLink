@@ -50,6 +50,13 @@ docker compose up -d
 - 反代：`http://localhost:18080`
 - 管理界面：`http://localhost:19080`
 
+### 管理端登录
+
+- **首次启动**：服务日志会打印一次随机密码（仅第一次生成时打印）。
+- **登录地址**：`http://<host>:19080/#/login`
+- **修改密码**：登录后在「设置」页面修改；新密码会持久化到 SQLite（挂载 `./data` 目录即可持久化）。
+- **鉴权方式**：管理 API 需要 `Authorization: Bearer <密码>`。
+
 ## GitHub Actions（Docker 镜像）
 
 仓库内置 Workflow：push 到 `main` 或手动触发时会构建并推送到 GHCR。
@@ -71,7 +78,6 @@ docker compose up -d
 | `SKYLINK_PROXY_PORT` | 反代监听端口，默认 18080 |
 | `SKYLINK_ADMIN_PORT` | 管理 API/GUI 端口，默认 19080 |
 | `SKYLINK_DB_PATH` | SQLite 路径，默认 `./data/skylink.db` |
-| `SKYLINK_ADMIN_SECRET` | 管理端鉴权密钥，设后请求需带 `Authorization: Bearer <secret>` |
 | `CF_API_TOKEN` | Cloudflare API Token（Zone.DNS Edit） |
 | `CF_ZONE_ID` | 默认 Zone ID（可选） |
 
@@ -90,7 +96,6 @@ app:
   proxy_port: 80
   admin_port: 8080
   db_path: ./data/skylink.db
-  admin_secret: ""
 
 cloudflare:
   api_token: ""

@@ -6,7 +6,6 @@ type App struct {
 	AdminPort   int    `yaml:"admin_port"`   // 管理 API + GUI 端口，默认 19080
 	DBPath      string `yaml:"db_path"`      // SQLite 文件路径
 	ConfigPath  string `yaml:"config_path"`  // 配置文件路径（可选）
-	AdminSecret string `yaml:"admin_secret"` // 管理端简单鉴权密钥，空则不做鉴权
 }
 
 // Cloudflare 从环境变量或配置文件读取，敏感信息建议用 env

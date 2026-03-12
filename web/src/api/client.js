@@ -6,7 +6,7 @@ const client = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-// 若设置了 SKYLINK_ADMIN_SECRET，可在 localStorage 或设置页配置后加到此 header
+// 登录成功后会将管理密码保存在 localStorage，并作为 Authorization Bearer 发送
 const token = () => localStorage.getItem('skylink_token') || ''
 client.interceptors.request.use((config) => {
   const t = token()
