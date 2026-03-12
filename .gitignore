@@ -17,6 +17,9 @@
 web/node_modules/
 web/dist/
 
+# JetBrains
+.idea/
+
 # Local data
 /data/
 *.db
