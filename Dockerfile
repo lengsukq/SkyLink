@@ -16,6 +16,7 @@ RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -o /skylink ./cmd/server
 # Stage 3: minimal runtime
 FROM alpine:3.19
 RUN apk add --no-cache ca-certificates
+COPY --from=builder /skylink /skylink
 WORKDIR /data
 ENV SKYLINK_DB_PATH=/data/skylink.db
 EXPOSE 18080 19080
