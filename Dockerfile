@@ -10,7 +10,7 @@ RUN npm run build
 FROM golang:1.21-alpine AS builder
 WORKDIR /app
 COPY . .
-COPY --from=frontend /app/web/dist ./web/dist
+COPY --from=frontend /app/web/dist ./static/web/dist
 RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -o /skylink ./cmd/server
 
 # Stage 3: minimal runtime

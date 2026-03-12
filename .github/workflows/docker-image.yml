@@ -73,6 +73,10 @@ jobs:
         run: |
           npm install
           npm run build
+          cd ..
+          mkdir -p static/web/dist
+          rm -rf static/web/dist/*
+          cp -R web/dist/* static/web/dist/
 
       - name: Set up Go
         uses: actions/setup-go@v5
