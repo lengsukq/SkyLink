@@ -1,0 +1,14 @@
+services:
+  skylink:
+    build: .
+    ports:
+      - "18080:18080"  # 反代端口（樱花 frp 转发到此）
+      - "19080:19080"  # 管理 API + GUI
+    volumes:
+      - ./data:/data
+    environment:
+      - SKYLINK_PROXY_PORT=18080
+      - SKYLINK_ADMIN_PORT=19080
+      - SKYLINK_DB_PATH=/data/skylink.db
+      # 可选：CF_API_TOKEN、CF_ZONE_ID、SKYLINK_ADMIN_SECRET
+    restart: unless-stopped

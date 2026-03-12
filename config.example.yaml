@@ -1,0 +1,10 @@
+# SkyLink 配置示例。敏感信息建议用环境变量覆盖。
+app:
+  proxy_port: 18080
+  admin_port: 19080
+  db_path: ./data/skylink.db
+  admin_secret: ""
+
+cloudflare:
+  api_token: ""
+  zone_id: ""

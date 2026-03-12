@@ -1,0 +1,27 @@
+.DS_Store
+
+# Go
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.prof
+/skylink
+
+# Go build cache / IDE
+/bin/
+
+# Node / Vite
+web/node_modules/
+web/dist/
+
+# Local data
+/data/
+*.db
+
+# Env files
+.env
+.env.*
+
