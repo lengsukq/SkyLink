@@ -102,7 +102,13 @@ func (s *Server) oneClickMapping(c *gin.Context) {
 	s.reloadProxy()
 
 	// 2) 若提供了 CF 信息则创建/更新 CNAME（支持默认值）
-	if s.cf != nil && req.ZoneID != "" && req.CNAMETarget != "" {
+	// 使用当前激活的 Cloudflare 账号（如未配置则仅完成本地映射）
+	cfClient, err := s.cfClientForCurrentAccount()
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"ok": true, "warning": "mapping added but cloudflare not configured: " + err.Error()})
+		return
+	}
+	if req.ZoneID != "" && req.CNAMETarget != "" {
 		proxied := true
 		if req.Proxied != nil {
 			proxied = *req.Proxied
@@ -114,7 +120,7 @@ func (s *Server) oneClickMapping(c *gin.Context) {
 		if len(name) > 0 && name[len(name)-1] == '.' {
 			name = name[:len(name)-1]
 		}
-		_, err := s.cf.EnsureCNAMEWithProxied(req.ZoneID, name, req.CNAMETarget, proxied)
+		_, err := cfClient.EnsureCNAMEWithProxied(req.ZoneID, name, req.CNAMETarget, proxied)
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{"ok": true, "warning": "mapping added but cf cname failed: " + err.Error()})
 			return
@@ -123,10 +129,7 @@ func (s *Server) oneClickMapping(c *gin.Context) {
 		return
 	}
 
-	if s.cf == nil {
-		c.JSON(http.StatusOK, gin.H{"ok": true, "warning": "mapping added but cloudflare not configured"})
-		return
-	}
+	// 走到这里说明：Cloudflare 可用，但缺少必要字段，仅返回提示
 	if strings.TrimSpace(req.ZoneID) == "" {
 		c.JSON(http.StatusOK, gin.H{"ok": true, "warning": "mapping added but zone_id not provided"})
 		return

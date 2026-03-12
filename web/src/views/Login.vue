@@ -1,39 +1,49 @@
 <template>
   <div class="login-page">
-    <div class="login-page__card-wrap">
-      <n-card title="登录 SkyLink 管理端">
-        <n-form
-          :model="form"
-          label-placement="left"
-          label-width="80"
-          @submit.prevent="onLogin"
-        >
-          <n-form-item label="密码" required>
-            <n-input
-              v-model:value="form.password"
-              type="password"
-              show-password-on="click"
-              placeholder="启动日志里打印的密码"
-              :disabled="loading"
-              @keyup.enter="onLogin"
-            />
-          </n-form-item>
-        </n-form>
-        <n-space justify="end">
-          <n-button
-            type="primary"
-            :loading="loading"
-            :disabled="!form.password.trim()"
-            @click="onLogin"
-          >
-            使用密码登录
-          </n-button>
-        </n-space>
-        <p class="login-page__hint">
-          首次启动会在服务日志里打印一次随机密码。登录后可在“设置”中修改。
-          如遗忘密码，可重启服务并查看最新启动日志。
+    <div class="login-page__content">
+      <div class="login-page__brand">
+        <h1 class="login-page__brand-title">SKYLINK</h1>
+        <p class="login-page__brand-subtitle">
+          智能 DNS 映射与边缘控制台，统一管理你的域名与流量入口。
         </p>
-      </n-card>
+      </div>
+      <div class="login-page__card-wrap">
+        <div class="login-page__card">
+          <n-card class="login-page__card-inner" title="SkyLink 控制台登录">
+            <n-form
+              :model="form"
+              label-placement="left"
+              label-width="80"
+              @submit.prevent="onLogin"
+            >
+              <n-form-item label="密码" required>
+                <n-input
+                  v-model:value="form.password"
+                  type="password"
+                  show-password-on="click"
+                  placeholder="启动日志里打印的密码"
+                  :disabled="loading"
+                  @keyup.enter="onLogin"
+                />
+              </n-form-item>
+            </n-form>
+            <n-space justify="end">
+              <n-button
+                type="primary"
+                :loading="loading"
+                :disabled="!form.password.trim()"
+                @click="onLogin"
+              >
+                使用密码登录
+              </n-button>
+            </n-space>
+            <p class="login-page__hint">
+              首次启动会在服务日志里打印一次随机密码，登录后可在「设置」中修改。
+              如遗忘密码，可重启服务并查看最新启动日志。
+            </p>
+          </n-card>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -65,24 +75,169 @@ async function onLogin() {
 
 <style>
 .login-page {
-  min-height: calc(100vh - 56px);
+  position: relative;
+  min-height: 100vh;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
-  padding-top: 64px;
-  background: linear-gradient(180deg, #f5f7fb 0%, #ffffff 40%);
+  padding: 40px 16px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(191, 219, 254, 0.9), transparent 60%),
+    radial-gradient(circle at 100% 100%, rgba(221, 214, 254, 0.9), transparent 60%),
+    linear-gradient(145deg, #eff6ff 0%, #f9fafb 40%, #ffffff 100%);
+  color: #0f172a;
+  overflow: hidden;
 }
 
-.login-page__card-wrap {
+.login-page::before,
+.login-page::after {
+  content: '';
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(40px);
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.login-page::before {
+  width: 260px;
+  height: 260px;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.85), transparent 65%);
+  top: -80px;
+  right: -40px;
+}
+
+.login-page::after {
+  width: 320px;
+  height: 320px;
+  background: radial-gradient(circle, rgba(129, 140, 248, 0.75), transparent 65%);
+  bottom: -140px;
+  left: -40px;
+}
+
+.login-page__content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 56px;
   width: 100%;
+  max-width: 1040px;
+}
+
+.login-page__brand {
+  flex: 1.2;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 16px;
+  max-width: 520px;
+}
+
+.login-page__brand-title {
+  font-size: 52px;
+  line-height: 1.02;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  background: linear-gradient(120deg, #38bdf8 0%, #818cf8 40%, #a855f7 80%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.login-page__brand-subtitle {
+  font-size: 16px;
+  line-height: 1.7;
+  color: #4b5563;
   max-width: 420px;
 }
 
+.login-page__card-wrap {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+
+.login-page__card {
+  width: 100%;
+  max-width: 420px;
+  padding: 1px;
+  border-radius: 24px;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(191, 219, 254, 0.9),
+      rgba(129, 140, 248, 0.9),
+      rgba(251, 251, 251, 1)
+    );
+  box-shadow:
+    0 22px 50px rgba(15, 23, 42, 0.16),
+    0 0 0 1px rgba(148, 163, 184, 0.35);
+}
+
+.login-page__card-inner.n-card {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.98));
+  border-radius: 22px;
+  border: none;
+  box-shadow: none;
+  color: #0f172a;
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+}
+
+.login-page__card-inner .n-card__header {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.login-page__card-inner .n-card-header__main {
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .login-page__hint {
-  color: #666;
+  color: #9ca3af;
   font-size: 12px;
-  margin-top: 12px;
-  line-height: 1.6;
+  margin-top: 16px;
+  line-height: 1.7;
+}
+
+@media (max-width: 960px) {
+  .login-page__content {
+    gap: 32px;
+  }
+
+  .login-page__brand-title {
+    font-size: 40px;
+  }
+}
+
+@media (max-width: 768px) {
+  .login-page {
+    padding: 24px 16px;
+  }
+
+  .login-page__content {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 32px;
+  }
+
+  .login-page__brand {
+    align-items: center;
+  }
+
+  .login-page__brand-subtitle {
+    max-width: 100%;
+  }
+
+  .login-page__card {
+    max-width: 100%;
+  }
 }
 </style>
 

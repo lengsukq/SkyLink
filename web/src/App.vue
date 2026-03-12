@@ -4,7 +4,7 @@
       <notifier-bridge />
       <n-message-provider>
         <n-layout class="app-layout">
-          <n-layout-header class="app-header" bordered>
+          <n-layout-header v-if="!isLoginPage" class="app-header" bordered>
             <div class="app-header__inner">
               <div class="app-header__left">
                 <span class="app-header__logo-text">SkyLink</span>
@@ -35,7 +35,7 @@
               </div>
             </div>
           </n-layout-header>
-          <n-layout-content class="app-content">
+          <n-layout-content :class="['app-content', { 'app-content--login': isLoginPage }]">
             <div class="app-content__inner">
               <router-view />
             </div>
@@ -77,6 +77,8 @@ const navItems = computed(() => [
   { path: '/ddns', label: 'DDNS' },
   { path: '/settings', label: '设置' },
 ])
+
+const isLoginPage = computed(() => route.path === '/login')
 
 function isActive(path) {
   return route.path === path
@@ -147,5 +149,14 @@ body {
   width: 100%;
   max-width: 1120px;
   margin: 0 auto;
+}
+
+.app-content--login {
+  padding: 0;
+}
+
+.app-content--login .app-content__inner {
+  max-width: none;
+  margin: 0;
 }
 </style>

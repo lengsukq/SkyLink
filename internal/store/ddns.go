@@ -5,11 +5,18 @@ import (
 	"time"
 )
 
-// ListDDNSConfigs 返回所有 DDNS 配置
-func (s *Store) ListDDNSConfigs() ([]DDNSConfig, error) {
-	rows, err := s.db.Query(
-		`SELECT id, zone_id, record_name, record_id, interval_min, enabled, last_ip, updated_at FROM ddns_config ORDER BY id`,
-	)
+// ListDDNSConfigs 返回指定 CF 账号下的所有 DDNS 配置；cfAccountID 为 0 时返回所有
+func (s *Store) ListDDNSConfigs(cfAccountID int64) ([]DDNSConfig, error) {
+	query := `SELECT id, cf_account_id, zone_id, record_name, record_id, interval_min, enabled, last_ip, updated_at FROM ddns_config`
+	var rows *sql.Rows
+	var err error
+	if cfAccountID > 0 {
+		query += ` WHERE cf_account_id = ? ORDER BY id`
+		rows, err = s.db.Query(query, cfAccountID)
+	} else {
+		query += ` ORDER BY id`
+		rows, err = s.db.Query(query)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -18,7 +25,7 @@ func (s *Store) ListDDNSConfigs() ([]DDNSConfig, error) {
 	for rows.Next() {
 		var d DDNSConfig
 		var enabled int
-		if err := rows.Scan(&d.ID, &d.ZoneID, &d.RecordName, &d.RecordID, &d.IntervalMin, &enabled, &d.LastIP, &d.UpdatedAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.CFAccountID, &d.ZoneID, &d.RecordName, &d.RecordID, &d.IntervalMin, &enabled, &d.LastIP, &d.UpdatedAt); err != nil {
 			return nil, err
 		}
 		d.Enabled = enabled != 0
@@ -32,9 +39,9 @@ func (s *Store) GetDDNSConfig(id int64) (*DDNSConfig, error) {
 	var d DDNSConfig
 	var enabled int
 	err := s.db.QueryRow(
-		`SELECT id, zone_id, record_name, record_id, interval_min, enabled, last_ip, updated_at FROM ddns_config WHERE id = ?`,
+		`SELECT id, cf_account_id, zone_id, record_name, record_id, interval_min, enabled, last_ip, updated_at FROM ddns_config WHERE id = ?`,
 		id,
-	).Scan(&d.ID, &d.ZoneID, &d.RecordName, &d.RecordID, &d.IntervalMin, &enabled, &d.LastIP, &d.UpdatedAt)
+	).Scan(&d.ID, &d.CFAccountID, &d.ZoneID, &d.RecordName, &d.RecordID, &d.IntervalMin, &enabled, &d.LastIP, &d.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -46,15 +53,15 @@ func (s *Store) GetDDNSConfig(id int64) (*DDNSConfig, error) {
 }
 
 // AddDDNSConfig 新增 DDNS 配置
-func (s *Store) AddDDNSConfig(zoneID, recordName, recordID string, intervalMin int, enabled bool) (int64, error) {
+func (s *Store) AddDDNSConfig(cfAccountID int64, zoneID, recordName, recordID string, intervalMin int, enabled bool) (int64, error) {
 	now := time.Now().Unix()
 	en := 0
 	if enabled {
 		en = 1
 	}
 	res, err := s.db.Exec(
-		`INSERT INTO ddns_config (zone_id, record_name, record_id, interval_min, enabled, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		zoneID, recordName, recordID, intervalMin, en, now,
+		`INSERT INTO ddns_config (cf_account_id, zone_id, record_name, record_id, interval_min, enabled, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		cfAccountID, zoneID, recordName, recordID, intervalMin, en, now,
 	)
 	if err != nil {
 		return 0, err
@@ -91,11 +98,18 @@ func (s *Store) DeleteDDNSConfig(id int64) error {
 	return err
 }
 
-// ListEnabledDDNSConfigs 仅返回已启用的，供 DDNS 协程使用
-func (s *Store) ListEnabledDDNSConfigs() ([]DDNSConfig, error) {
-	rows, err := s.db.Query(
-		`SELECT id, zone_id, record_name, record_id, interval_min, last_ip, updated_at FROM ddns_config WHERE enabled = 1 ORDER BY id`,
-	)
+// ListEnabledDDNSConfigs 仅返回指定 CF 账号下已启用的配置，供 DDNS 协程使用；cfAccountID 为 0 时返回所有
+func (s *Store) ListEnabledDDNSConfigs(cfAccountID int64) ([]DDNSConfig, error) {
+	query := `SELECT id, cf_account_id, zone_id, record_name, record_id, interval_min, last_ip, updated_at FROM ddns_config WHERE enabled = 1`
+	var rows *sql.Rows
+	var err error
+	if cfAccountID > 0 {
+		query += ` AND cf_account_id = ? ORDER BY id`
+		rows, err = s.db.Query(query, cfAccountID)
+	} else {
+		query += ` ORDER BY id`
+		rows, err = s.db.Query(query)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +117,7 @@ func (s *Store) ListEnabledDDNSConfigs() ([]DDNSConfig, error) {
 	var out []DDNSConfig
 	for rows.Next() {
 		var d DDNSConfig
-		if err := rows.Scan(&d.ID, &d.ZoneID, &d.RecordName, &d.RecordID, &d.IntervalMin, &d.LastIP, &d.UpdatedAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.CFAccountID, &d.ZoneID, &d.RecordName, &d.RecordID, &d.IntervalMin, &d.LastIP, &d.UpdatedAt); err != nil {
 			return nil, err
 		}
 		d.Enabled = true

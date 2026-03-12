@@ -11,6 +11,7 @@ type Mapping struct {
 // DDNSConfig DDNS 配置：定时更新某条 A 记录为当前公网 IP
 type DDNSConfig struct {
 	ID          int64  `json:"id"`
+	CFAccountID int64  `json:"cf_account_id"`
 	ZoneID      string `json:"zone_id"`
 	RecordName  string `json:"record_name"`  // 如 @ 或 sub
 	RecordID    string `json:"record_id"`   // CF 记录 ID，更新时用
@@ -18,4 +19,13 @@ type DDNSConfig struct {
 	Enabled     bool   `json:"enabled"`
 	LastIP      string `json:"last_ip"`
 	UpdatedAt   int64  `json:"updated_at"`
+}
+
+// CFAccount Cloudflare 账号配置，多账号隔离使用
+type CFAccount struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	APIToken  string `json:"api_token"`
+	ZoneID    string `json:"zone_id"`
+	CreatedAt int64  `json:"created_at"`
 }

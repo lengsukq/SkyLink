@@ -48,12 +48,6 @@ func Load(path string) (*App, *Cloudflare, error) {
 	if v := os.Getenv("SKYLINK_DB_PATH"); v != "" {
 		app.DBPath = v
 	}
-	if v := os.Getenv("CF_API_TOKEN"); v != "" {
-		cf.APIToken = v
-	}
-	if v := os.Getenv("CF_ZONE_ID"); v != "" {
-		cf.ZoneID = v
-	}
 
 	return app, cf, nil
 }

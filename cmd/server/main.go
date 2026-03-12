@@ -1,8 +1,6 @@
 package main
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -18,6 +16,7 @@ import (
 	"github.com/skylink/skylink/internal/ddns"
 	"github.com/skylink/skylink/internal/proxy"
 	"github.com/skylink/skylink/internal/store"
+	"github.com/skylink/skylink/internal/security"
 	"github.com/skylink/skylink/static"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -56,6 +55,8 @@ func main() {
 	// DDNS 更新器：更新 CF A 记录并写回 store
 	var ddnsUpdater *ddns.Updater
 	if cfClient != nil {
+		// 目前 DDNS 使用单一 Cloudflare 账号更新 DNS 记录；
+		// 如果后续需要按账号拆分，可在此基于 cf_accounts 做进一步扩展。
 		ddnsUpdater = ddns.NewUpdater(
 			func(item ddns.DDNSItem, newIP string) error {
 				_, err := cfClient.UpdateDNSRecord(item.ZoneID, item.RecordID, "A", item.RecordName, newIP, 1, false)
@@ -65,7 +66,7 @@ func main() {
 				return st.UpdateDDNSLastResult(item.ID, newIP)
 			},
 			func() ([]ddns.DDNSItem, error) {
-				list, err := st.ListEnabledDDNSConfigs()
+				list, err := st.ListEnabledDDNSConfigs(0)
 				if err != nil {
 					return nil, err
 				}
@@ -132,7 +133,7 @@ func ensureAdminPassword(st *store.Store) error {
 		return nil
 	}
 
-	pw, err := generatePassword(18)
+	pw, err := security.GeneratePassword(18)
 	if err != nil {
 		return err
 	}
@@ -145,16 +146,4 @@ func ensureAdminPassword(st *store.Store) error {
 	}
 	log.Printf("SkyLink admin password (generated once): %s", pw)
 	return nil
-}
-
-func generatePassword(n int) (string, error) {
-	if n <= 0 {
-		n = 18
-	}
-	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	// URL-safe, no padding
-	return base64.RawURLEncoding.EncodeToString(b)[:n], nil
 }

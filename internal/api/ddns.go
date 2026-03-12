@@ -18,7 +18,14 @@ func normalizeDDNSIntervalMin(v int) int {
 }
 
 func (s *Server) listDDNS(c *gin.Context) {
-	list, err := s.store.ListDDNSConfigs()
+	// 需要当前 CF 账号上下文，以实现按账号隔离
+	if _, err := s.cfClientForCurrentAccount(); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	idVal := s.currentCFAccountID.Load()
+	cfAccountID, _ := idVal.(int64)
+	list, err := s.store.ListDDNSConfigs(cfAccountID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -42,8 +49,15 @@ func (s *Server) addDDNS(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "zone_id, record_name, record_id required"})
 		return
 	}
+	// 需要当前 CF 账号上下文，以便将配置绑定到对应账号
+	if _, err := s.cfClientForCurrentAccount(); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return
+	}
+	idVal := s.currentCFAccountID.Load()
+	cfAccountID, _ := idVal.(int64)
 	req.IntervalMin = normalizeDDNSIntervalMin(req.IntervalMin)
-	_, err := s.store.AddDDNSConfig(req.ZoneID, req.RecordName, req.RecordID, req.IntervalMin, req.Enabled)
+	_, err := s.store.AddDDNSConfig(cfAccountID, req.ZoneID, req.RecordName, req.RecordID, req.IntervalMin, req.Enabled)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
