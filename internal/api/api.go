@@ -73,6 +73,10 @@ func (s *Server) Handler() http.Handler {
 	// 仪表盘汇总
 	r.GET("/api/stats", s.stats)
 
+	// 全局设置
+	r.GET("/api/settings", s.getSettings)
+	r.PUT("/api/settings", s.updateSettings)
+
 	// 其它路径回退到内嵌静态前端（SPA）
 	r.NoRoute(s.serveFrontend)
 	return r

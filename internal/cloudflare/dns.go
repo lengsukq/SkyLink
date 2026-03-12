@@ -93,6 +93,11 @@ func (c *Client) DeleteDNSRecord(zoneID, recordID string) error {
 
 // EnsureCNAME 若不存在则创建 CNAME name -> content，存在则更新；返回 record ID
 func (c *Client) EnsureCNAME(zoneID, name, content string) (recordID string, err error) {
+	return c.EnsureCNAMEWithProxied(zoneID, name, content, true)
+}
+
+// EnsureCNAMEWithProxied 若不存在则创建 CNAME；存在则更新（含 proxied）；返回 record ID
+func (c *Client) EnsureCNAMEWithProxied(zoneID, name, content string, proxied bool) (recordID string, err error) {
 	records, err := c.ListDNSRecords(zoneID)
 	if err != nil {
 		return "", err
@@ -102,14 +107,14 @@ func (c *Client) EnsureCNAME(zoneID, name, content string) (recordID string, err
 			if r.Type == "CNAME" && r.Content == content {
 				return r.ID, nil
 			}
-			_, err := c.UpdateDNSRecord(zoneID, r.ID, "CNAME", name, content, TTLAuto, true)
+			_, err := c.UpdateDNSRecord(zoneID, r.ID, "CNAME", name, content, TTLAuto, proxied)
 			if err != nil {
 				return "", err
 			}
 			return r.ID, nil
 		}
 	}
-	rec, err := c.CreateDNSRecord(zoneID, "CNAME", name, content, TTLAuto, true)
+	rec, err := c.CreateDNSRecord(zoneID, "CNAME", name, content, TTLAuto, proxied)
 	if err != nil {
 		return "", err
 	}

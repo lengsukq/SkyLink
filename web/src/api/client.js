@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { notifyError } from '../ui/notify'
 
 const client = axios.create({
   baseURL: '/api',
@@ -17,11 +18,27 @@ client.interceptors.request.use((config) => {
 client.interceptors.response.use(
   (r) => r,
   (e) => {
+    const status = e.response?.status
+    const data = e.response?.data
+    const msg =
+      (typeof data?.error === 'string' && data.error) ||
+      (typeof data?.warning === 'string' && data.warning) ||
+      e.message ||
+      'Request failed'
+
     if (e.response?.status === 401) {
       localStorage.removeItem('skylink_token')
+      notifyError('未授权', msg)
       if (window.location.hash !== '#/login') {
         window.location.hash = '#/login'
       }
+      return Promise.reject(e)
+    }
+
+    if (status) {
+      notifyError(`请求失败 (${status})`, msg)
+    } else {
+      notifyError('网络错误', msg)
     }
     return Promise.reject(e)
   }
