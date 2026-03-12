@@ -5,7 +5,6 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/skylink/skylink/internal/store"
 )
 
 func (s *Server) listMappings(c *gin.Context) {
