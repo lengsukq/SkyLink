@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"github.com/skylink/skylink/internal/ddns"
 	"github.com/skylink/skylink/internal/proxy"
 	"github.com/skylink/skylink/internal/store"
+	"github.com/skylink/skylink/static"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -85,7 +87,12 @@ func main() {
 	}
 
 	// 管理 API + 内嵌静态前端
-	srv := api.New(st, pr, cfClient, StaticFS)
+	frontendFS, err := fs.Sub(static.FS, "web/dist")
+	if err != nil {
+		log.Printf("static frontend not available: %v", err)
+		frontendFS = nil
+	}
+	srv := api.New(st, pr, cfClient, frontendFS)
 	adminHandler := srv.Handler()
 
 	go func() {

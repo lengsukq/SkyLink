@@ -24,7 +24,7 @@ func (s *Server) serveFrontend(c *gin.Context) {
 		c.Status(http.StatusNotFound)
 		return
 	}
-	// staticFS 的根即为 web/dist 内容（embed 时已用 all:../web/dist）
+	// staticFS 的根即为 web/dist 内容（由 main 传入 sub-FS）
 	data, err := fs.ReadFile(s.staticFS, path)
 	if err != nil {
 		data, err = fs.ReadFile(s.staticFS, "index.html")
