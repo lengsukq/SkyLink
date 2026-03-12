@@ -43,6 +43,51 @@ go build -o skylink ./cmd/server
 
 ## Docker
 
+### 一键拉取并部署（推荐）
+
+使用已发布镜像直接启动，无需本地构建。
+
+#### 方式 A：docker run
+
+```bash
+docker pull queensu/skylink:latest
+docker run -d \
+  --name skylink \
+  --restart unless-stopped \
+  -p 18080:18080 \
+  -p 19080:19080 \
+  -v "$(pwd)/data:/data" \
+  -e SKYLINK_DB_PATH=/data/skylink.db \
+  -e CF_API_TOKEN="<your_cf_token>" \
+  -e CF_ZONE_ID="<optional_zone_id>" \
+  queensu/skylink:latest
+```
+
+#### 方式 B：docker compose
+
+创建 `docker-compose.yml`（示例）：
+
+```yaml
+services:
+  skylink:
+    image: queensu/skylink:latest
+    ports:
+      - "18080:18080"
+      - "19080:19080"
+    volumes:
+      - ./data:/data
+    environment:
+      - SKYLINK_DB_PATH=/data/skylink.db
+      # 可选：CF_API_TOKEN、CF_ZONE_ID
+    restart: unless-stopped
+```
+
+启动：
+
+```bash
+docker compose up -d
+```
+
 ```bash
 docker compose up -d
 ```
