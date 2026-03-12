@@ -80,6 +80,16 @@ func (s *Server) Handler() http.Handler {
 
 func (s *Server) authMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// 静态资源与前端路由不需要鉴权；只保护 /api/*
+		if !strings.HasPrefix(c.Request.URL.Path, "/api/") {
+			c.Next()
+			return
+		}
+		// 预检请求放行
+		if c.Request.Method == http.MethodOptions {
+			c.Next()
+			return
+		}
 		// 允许登录接口匿名访问
 		if c.Request.Method == http.MethodPost && c.FullPath() == "/api/auth/login" {
 			c.Next()
