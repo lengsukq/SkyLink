@@ -10,7 +10,7 @@
           title="需要添加 Cloudflare 账号"
           description="请先添加 Cloudflare 账号并选择 Zone，才能在此管理 DNS 记录。"
           primary-text="添加 Cloudflare 账号"
-          @primary="showAddAccountModal = true"
+          @primary="openAccountsManager"
         />
       </n-card>
       <n-card v-else class="page-section page-card">
@@ -128,16 +128,32 @@
       </n-modal>
     </template>
 
+    <n-modal
+      v-model:show="showAccountsManager"
+      title="Cloudflare 账号管理"
+      preset="dialog"
+      style="width: 720px"
+    >
+      <n-space vertical>
+        <n-space align="center">
+          <n-button size="small" :loading="accountsLoading" @click="loadAccounts">刷新</n-button>
+          <n-button size="small" type="primary" @click="openCreateAccount">新增账号</n-button>
+        </n-space>
+        <n-data-table :columns="accountColumns" :data="accounts" :bordered="false" size="small" />
+      </n-space>
+    </n-modal>
+
     <cf-account-form-modal
-      v-model:show="showAddAccountModal"
-      :editing-account="null"
-      @saved="onCfAccountSaved"
+      v-model:show="showAccountModal"
+      :editing-account="editingAccount"
+      @saved="onAccountSaved"
     />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch, h, inject } from 'vue'
+import { useRoute } from 'vue-router'
 import {
   NSelect,
   NButton,
@@ -162,15 +178,22 @@ import PageHeader from '../components/PageHeader.vue'
 import EmptyState from '../components/EmptyState.vue'
 import CfAccountFormModal from '../components/CfAccountFormModal.vue'
 
+const route = useRoute()
+
 const cfCurrentAccountId = inject('cfCurrentAccountId', ref(null))
 const cfAccounts = inject('cfAccounts', ref([]))
 const refreshCfState = inject('refreshCfState', () => Promise.resolve())
-const showAddAccountModal = ref(false)
 
 const zones = ref([])
 const records = ref([])
 const currentZoneId = ref(null)
 const loading = ref(false)
+
+const accountsLoading = ref(false)
+const accounts = ref([])
+const showAccountModal = ref(false)
+const editingAccount = ref(null)
+const showAccountsManager = ref(false)
 
 const zoneStorageKey = 'skylink_cf_zone_id'
 
@@ -202,6 +225,42 @@ const typeOptions = [
 ]
 
 const proxiedLoading = ref(new Set())
+
+const accountColumns = [
+  { title: 'ID', key: 'id', width: 60 },
+  { title: '名称', key: 'name' },
+  { title: '默认 Zone ID', key: 'zone_id' },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 180,
+    render: (row) =>
+      h(NSpace, null, {
+        default: () => [
+          h(
+            NButton,
+            {
+              size: 'small',
+              onClick: () => openEditAccount(row),
+            },
+            { default: () => '编辑' }
+          ),
+          h(
+            NPopconfirm,
+            {
+              positiveText: '删除',
+              negativeText: '取消',
+              onPositiveClick: () => deleteAccount(row.id),
+            },
+            {
+              trigger: () => h(NButton, { size: 'small', type: 'error' }, { default: () => '删除' }),
+              default: () => '确定删除该账号？',
+            }
+          ),
+        ],
+      }),
+  },
+]
 
 const recordColumns = computed(() => [
   { title: '类型', key: 'type', width: 90 },
@@ -295,12 +354,14 @@ watch([query, pageSize], () => {
   page.value = 1
 })
 
-function onCfAccountSaved() {
-  refreshCfState().then(() => {
-    if (!needCfAccountSetup.value) {
-      loadZones().then(() => loadRecordsFromCache())
-    }
-  })
+async function loadAccounts() {
+  accountsLoading.value = true
+  try {
+    const { data } = await api.get('/cf/accounts')
+    accounts.value = data.accounts || []
+  } finally {
+    accountsLoading.value = false
+  }
 }
 
 async function loadZones() {
@@ -425,6 +486,37 @@ async function onDelete(row) {
   await loadRecords()
 }
 
+function openAccountsManager() {
+  showAccountsManager.value = true
+  loadAccounts()
+}
+
+function openCreateAccount() {
+  editingAccount.value = null
+  showAccountModal.value = true
+}
+
+function openEditAccount(row) {
+  editingAccount.value = row
+  showAccountModal.value = true
+}
+
+async function deleteAccount(id) {
+  await api.delete(`/cf/accounts/${id}`)
+  await refreshCfState()
+  await loadAccounts()
+}
+
+async function onAccountSaved() {
+  showAccountModal.value = false
+  await refreshCfState()
+  await loadAccounts()
+  if (!needCfAccountSetup.value) {
+    await loadZones()
+    loadRecordsFromCache()
+  }
+}
+
 async function toggleProxied(row, v) {
   if (!currentZoneId.value) return
   if (proxiedLoading.value.has(row.id)) return
@@ -457,9 +549,22 @@ function normalizeTTL(v) {
 }
 
 onMounted(async () => {
+  await loadAccounts()
   if (!needCfAccountSetup.value) {
     await loadZones()
     loadRecordsFromCache()
   }
+  if (route.query.manage) {
+    openAccountsManager()
+  }
 })
+
+watch(
+  () => route.query.manage,
+  (val, oldVal) => {
+    if (val && val !== oldVal) {
+      openAccountsManager()
+    }
+  }
+)
 </script>

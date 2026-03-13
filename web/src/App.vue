@@ -32,8 +32,8 @@
                     :loading="cfAccountsLoading"
                     @update:value="onActivateCfAccount"
                   />
-                  <n-button quaternary size="small" @click="showCfAccountModal = true">
-                    新增账号
+                  <n-button quaternary size="small" @click="onClickManageAccounts">
+                    管理账号
                   </n-button>
                   <n-button
                     quaternary
@@ -123,6 +123,14 @@ function isActive(path) {
 function go(path) {
   if (route.path !== path) {
     router.push(path)
+  }
+}
+
+function onClickManageAccounts() {
+  if (route.path !== '/cloudflare') {
+    router.push({ path: '/cloudflare', query: { manage: '1' } })
+  } else {
+    router.push({ path: '/cloudflare', query: { manage: String(Date.now()) } })
   }
 }
 

@@ -14,6 +14,14 @@
             <n-form-item label="新密码" required>
               <n-input v-model:value="pwForm.new_password" type="password" show-password-on="click" placeholder="设置一个新密码" />
             </n-form-item>
+            <n-form-item label="确认新密码" required>
+              <n-input
+                v-model:value="pwForm.confirm_password"
+                type="password"
+                show-password-on="click"
+                placeholder="再次输入新密码"
+              />
+            </n-form-item>
           </n-form>
           <n-space>
             <n-button type="primary" :loading="loading" @click="changePassword">修改密码</n-button>
@@ -62,39 +70,20 @@
       </n-gi>
     </n-grid>
 
-    <n-card title="Cloudflare 账号管理" class="page-section page-card">
-        <n-space vertical>
-          <p class="settings-hint settings-hint--inline">
-            当前使用的账号请在页面右上角切换，可在此新增、编辑或删除账号。
-          </p>
-        <n-space align="center">
-          <n-button size="small" :loading="accountsLoading" @click="loadAccounts">刷新</n-button>
-          <n-button size="small" type="primary" @click="openCreateAccount">新增账号</n-button>
-        </n-space>
-        <n-data-table :columns="accountColumns" :data="accounts" :bordered="false" size="small" />
-      </n-space>
-    </n-card>
-
-    <cf-account-form-modal
-      v-model:show="showAccountModal"
-      :editing-account="editingAccount"
-      @saved="onAccountSaved"
-    />
   </div>
 </template>
 
 <script setup>
-import { h, onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { NCard, NForm, NFormItem, NInput, NButton, NSpace, NSwitch, NDataTable, NPopconfirm, NGrid, NGi } from 'naive-ui'
+import { NCard, NForm, NFormItem, NInput, NButton, NSpace, NSwitch, NGrid, NGi } from 'naive-ui'
 import api from '../api/client'
-import { notifySuccess } from '../ui/notify'
+import { notifySuccess, notifyError } from '../ui/notify'
 import PageHeader from '../components/PageHeader.vue'
-import CfAccountFormModal from '../components/CfAccountFormModal.vue'
 
 const router = useRouter()
 const loading = ref(false)
-const pwForm = reactive({ old_password: '', new_password: '' })
+const pwForm = reactive({ old_password: '', new_password: '', confirm_password: '' })
 
 const defaultsSaving = ref(false)
 const defaultsForm = reactive({ frp_cname_target: '', cf_cname_proxied: true })
@@ -102,49 +91,15 @@ const defaultsForm = reactive({ frp_cname_target: '', cf_cname_proxied: true })
 const easytierAutostart = ref(false)
 const easytierAutostartSaving = ref(false)
 
-const accountsLoading = ref(false)
-const accounts = ref([])
-const showAccountModal = ref(false)
-const editingAccount = ref(null)
-
-const accountColumns = [
-  { title: 'ID', key: 'id', width: 60 },
-  { title: '名称', key: 'name' },
-  { title: '默认 Zone ID', key: 'zone_id' },
-  {
-    title: '操作',
-    key: 'actions',
-    width: 180,
-    render: (row) =>
-      h(NSpace, null, {
-        default: () => [
-          h(
-            NButton,
-            {
-              size: 'small',
-              onClick: () => openEditAccount(row),
-            },
-            { default: () => '编辑' }
-          ),
-          h(
-            NPopconfirm,
-            {
-              positiveText: '删除',
-              negativeText: '取消',
-              onPositiveClick: () => deleteAccount(row.id),
-            },
-            {
-              trigger: () => h(NButton, { size: 'small', type: 'error' }, { default: () => '删除' }),
-              default: () => '确定删除该账号？',
-            }
-          ),
-        ],
-      }),
-  },
-]
-
 async function changePassword() {
-  if (!pwForm.old_password.trim() || !pwForm.new_password.trim()) return
+  if (!pwForm.old_password.trim() || !pwForm.new_password.trim() || !pwForm.confirm_password.trim()) {
+    notifyError('信息不完整', '请填写当前密码、新密码和确认新密码。')
+    return
+  }
+  if (pwForm.new_password.trim() !== pwForm.confirm_password.trim()) {
+    notifyError('两次密码不一致', '请确保两次输入的新密码完全一致。')
+    return
+  }
   loading.value = true
   try {
     await api.post('/auth/password', {
@@ -154,6 +109,7 @@ async function changePassword() {
     localStorage.setItem('skylink_token', pwForm.new_password.trim())
     pwForm.old_password = ''
     pwForm.new_password = ''
+    pwForm.confirm_password = ''
     notifySuccess('修改成功', '管理密码已更新')
   } finally {
     loading.value = false
@@ -174,35 +130,6 @@ async function loadDefaults() {
 async function loadEasyTierSettings() {
   const { data } = await api.get('/easytier/settings')
   easytierAutostart.value = !!data?.autostart_on_startup
-}
-
-async function loadAccounts() {
-  accountsLoading.value = true
-  try {
-    const { data } = await api.get('/cf/accounts')
-    accounts.value = data.accounts || []
-  } finally {
-    accountsLoading.value = false
-  }
-}
-
-function openCreateAccount() {
-  editingAccount.value = null
-  showAccountModal.value = true
-}
-
-function openEditAccount(row) {
-  editingAccount.value = row
-  showAccountModal.value = true
-}
-
-function onAccountSaved() {
-  loadAccounts()
-}
-
-async function deleteAccount(id) {
-  await api.delete(`/cf/accounts/${id}`)
-  await loadAccounts()
 }
 
 async function saveDefaults() {
@@ -236,7 +163,7 @@ async function onToggleEasyTierAutostart(val) {
 }
 
 onMounted(async () => {
-  await Promise.all([loadDefaults(), loadEasyTierSettings(), loadAccounts()])
+  await Promise.all([loadDefaults(), loadEasyTierSettings()])
 })
 </script>
 
