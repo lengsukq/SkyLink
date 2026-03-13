@@ -2,22 +2,34 @@ package api
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 )
 
 const (
-	settingFrpCnameTarget  = "frp.cname_target"
-	settingCFCnameProxied  = "cf.cname_proxied"
+	settingFrpCnameTarget     = "frp.cname_target"
+	settingCFCnameProxied     = "cf.cname_proxied"
+	settingCFCurrentAccountID = "cf.current_account_id"
 )
 
 func (s *Server) getSettings(c *gin.Context) {
 	frp, _ := s.store.GetSetting(settingFrpCnameTarget)
 	proxied, _ := s.store.GetSetting(settingCFCnameProxied)
+	currentCF, _ := s.store.GetSetting(settingCFCurrentAccountID)
+
+	cfAccountID := int64(0)
+	if v := strings.TrimSpace(currentCF); v != "" {
+		if id, err := strconv.ParseInt(v, 10, 64); err == nil && id > 0 {
+			cfAccountID = id
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"frp_cname_target": strings.TrimSpace(frp),
-		"cf_cname_proxied": parseBoolDefault(proxied, true),
+		"frp_cname_target":       strings.TrimSpace(frp),
+		"cf_cname_proxied":       parseBoolDefault(proxied, true),
+		"cf_current_account_id": cfAccountID,
 	})
 }
 

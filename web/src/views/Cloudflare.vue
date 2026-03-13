@@ -1,67 +1,88 @@
 <template>
   <div>
-    <page-header
-      title="Cloudflare DNS"
-      description="在选定的 Zone 下管理 DNS 记录，可搜索和分页浏览。"
-    >
-      <template #actions>
-        <n-space>
-          <n-select
-            v-model:value="currentZoneId"
-            :options="zoneOptions"
-            placeholder="选择 Zone"
-            style="width: 220px"
-          />
-          <n-input
-            v-model:value="query"
-            placeholder="按 name / type / content 搜索"
-            style="width: 260px"
-            clearable
-          />
-          <n-select
-            v-model:value="pageSize"
-            :options="pageSizeOptions"
-            style="width: 140px"
-          />
-          <n-button
-            type="primary"
-            :disabled="!currentZoneId"
-            @click="showCreate = true"
-          >
-            新增记录
-          </n-button>
-          <n-button :disabled="!currentZoneId" @click="loadRecords">刷新记录</n-button>
-        </n-space>
-      </template>
-    </page-header>
-    <div class="cloudflare-stats" v-if="filteredRecords.length">
-      共 {{ records.length }} 条记录，当前筛选出 {{ filteredRecords.length }} 条。
-    </div>
-    <n-spin :show="loading">
-      <n-data-table
-        :columns="recordColumns"
-        :data="pagedRecords"
-        :bordered="false"
-        :single-line="false"
+    <template v-if="needCfAccountSetup">
+      <page-header
+        title="Cloudflare DNS"
+        description="在选定的 Zone 下管理 DNS 记录，可搜索和分页浏览。"
+      />
+      <n-card v-if="!hasAnyCfAccount" style="max-width: 480px; margin-top: 24px">
+        <empty-state
+          title="需要添加 Cloudflare 账号"
+          description="请先添加 Cloudflare 账号并选择 Zone，才能在此管理 DNS 记录。"
+          primary-text="添加 Cloudflare 账号"
+          @primary="showAddAccountModal = true"
+        />
+      </n-card>
+      <n-card v-else style="max-width: 480px; margin-top: 24px">
+        <empty-state
+          title="请选择当前账号"
+          description="您已添加了 Cloudflare 账号，请在页面右上角选择当前要使用的账号。"
+        />
+      </n-card>
+    </template>
+    <template v-else>
+      <page-header
+        title="Cloudflare DNS"
+        description="在选定的 Zone 下管理 DNS 记录，可搜索和分页浏览。"
       >
-        <template #empty>
-          <empty-state
-            title="当前 Zone 下暂无 DNS 记录"
-            description="可以为应用创建 A / AAAA / CNAME 等记录，或切换到其他 Zone。"
-          />
+        <template #actions>
+          <n-space>
+            <n-select
+              v-model:value="currentZoneId"
+              :options="zoneOptions"
+              placeholder="选择 Zone"
+              style="width: 220px"
+            />
+            <n-input
+              v-model:value="query"
+              placeholder="按 name / type / content 搜索"
+              style="width: 260px"
+              clearable
+            />
+            <n-select
+              v-model:value="pageSize"
+              :options="pageSizeOptions"
+              style="width: 140px"
+            />
+            <n-button
+              type="primary"
+              :disabled="!currentZoneId"
+              @click="showCreate = true"
+            >
+              新增记录
+            </n-button>
+            <n-button :disabled="!currentZoneId" :loading="loading" @click="loadRecords">获取最新</n-button>
+          </n-space>
         </template>
-      </n-data-table>
-    </n-spin>
-    <n-pagination
+      </page-header>
+      <div class="cloudflare-stats" v-if="filteredRecords.length">
+        共 {{ records.length }} 条记录，当前筛选出 {{ filteredRecords.length }} 条。
+      </div>
+      <n-spin :show="loading">
+        <n-data-table
+          :columns="recordColumns"
+          :data="pagedRecords"
+          :bordered="false"
+          :single-line="false"
+        >
+          <template #empty>
+            <empty-state
+              title="当前 Zone 下暂无 DNS 记录"
+              description="可以为应用创建 A / AAAA / CNAME 等记录，或切换到其他 Zone。"
+            />
+          </template>
+        </n-data-table>
+      </n-spin>
+      <n-pagination
       v-model:page="page"
       :page-size="pageSize"
       :item-count="filteredRecords.length"
       :page-sizes="[10, 20, 50, 100]"
       show-size-picker
       @update:page-size="onPageSizeChange"
-    />
+      />
 
-    <n-modal v-model:show="showCreate" title="新增 DNS 记录" preset="dialog" positive-text="创建" :loading="createLoading" @positive-click="onCreate">
+      <n-modal v-model:show="showCreate" title="新增 DNS 记录" preset="dialog" positive-text="创建" :loading="createLoading" @positive-click="onCreate">
       <n-form :model="createForm" label-placement="left" label-width="90" style="padding: 16px 0">
         <n-form-item label="类型" required>
           <n-select v-model:value="createForm.type" :options="typeOptions" style="width: 160px" />
@@ -79,9 +100,9 @@
           <n-switch v-model:value="createForm.proxied" />
         </n-form-item>
       </n-form>
-    </n-modal>
+      </n-modal>
 
-    <n-modal v-model:show="showEdit" title="编辑 DNS 记录" preset="dialog" positive-text="保存" :loading="editLoading" @positive-click="onEdit">
+      <n-modal v-model:show="showEdit" title="编辑 DNS 记录" preset="dialog" positive-text="保存" :loading="editLoading" @positive-click="onEdit">
       <n-form :model="editForm" label-placement="left" label-width="90" style="padding: 16px 0">
         <n-form-item label="类型" required>
           <n-select v-model:value="editForm.type" :options="typeOptions" style="width: 160px" />
@@ -99,12 +120,19 @@
           <n-switch v-model:value="editForm.proxied" />
         </n-form-item>
       </n-form>
-    </n-modal>
+      </n-modal>
+    </template>
+
+    <cf-account-form-modal
+      v-model:show="showAddAccountModal"
+      :editing-account="null"
+      @saved="onCfAccountSaved"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, h } from 'vue'
+import { ref, computed, onMounted, watch, h, inject } from 'vue'
 import {
   NSelect,
   NButton,
@@ -120,11 +148,19 @@ import {
   NPopconfirm,
   NSpin,
   NEllipsis,
+  NCard,
 } from 'naive-ui'
 import api from '../api/client'
 import { notifySuccess } from '../ui/notify'
+import { getCachedRecords, setCachedRecords } from '../utils/cfRecordsCache'
 import PageHeader from '../components/PageHeader.vue'
 import EmptyState from '../components/EmptyState.vue'
+import CfAccountFormModal from '../components/CfAccountFormModal.vue'
+
+const cfCurrentAccountId = inject('cfCurrentAccountId', ref(null))
+const cfAccounts = inject('cfAccounts', ref([]))
+const refreshCfState = inject('refreshCfState', () => Promise.resolve())
+const showAddAccountModal = ref(false)
 
 const zones = ref([])
 const records = ref([])
@@ -145,6 +181,11 @@ const pageSizeOptions = [
 
 const zoneOptions = computed(() =>
   zones.value.map((z) => ({ label: z.name, value: z.id }))
+)
+
+const hasAnyCfAccount = computed(() => (cfAccounts.value || []).length > 0)
+const needCfAccountSetup = computed(
+  () => !hasAnyCfAccount.value || !cfCurrentAccountId.value
 )
 
 const typeOptions = [
@@ -249,6 +290,14 @@ watch([query, pageSize], () => {
   page.value = 1
 })
 
+function onCfAccountSaved() {
+  refreshCfState().then(() => {
+    if (!needCfAccountSetup.value) {
+      loadZones().then(() => loadRecordsFromCache())
+    }
+  })
+}
+
 async function loadZones() {
   try {
     const { data } = await api.get('/cf/zones')
@@ -262,12 +311,20 @@ async function loadZones() {
   } catch (_) {}
 }
 
+function loadRecordsFromCache() {
+  if (!currentZoneId.value) return
+  const cached = getCachedRecords(cfCurrentAccountId.value, currentZoneId.value)
+  records.value = cached != null ? cached : []
+}
+
 async function loadRecords() {
   if (!currentZoneId.value) return
   loading.value = true
   try {
     const { data } = await api.get(`/cf/zones/${currentZoneId.value}/records`)
-    records.value = data.records || []
+    const list = data.records || []
+    records.value = list
+    setCachedRecords(cfCurrentAccountId.value, currentZoneId.value, list)
   } catch (_) {
     records.value = []
   } finally {
@@ -282,7 +339,7 @@ watch(
     localStorage.setItem(zoneStorageKey, v)
     page.value = 1
     query.value = ''
-    loadRecords()
+    loadRecordsFromCache()
   },
   { immediate: false }
 )
@@ -394,7 +451,10 @@ function normalizeTTL(v) {
   return Math.trunc(n)
 }
 
-onMounted(() => {
-  loadZones().then(() => loadRecords())
+onMounted(async () => {
+  if (!needCfAccountSetup.value) {
+    await loadZones()
+    loadRecordsFromCache()
+  }
 })
 </script>

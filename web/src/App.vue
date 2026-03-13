@@ -22,16 +22,30 @@
                 </n-space>
               </div>
               <div class="app-header__right">
-                <n-button
-                  quaternary
-                  tag="a"
-                  href="https://github.com/lengsukq/SkyLink"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  size="small"
-                >
-                  GitHub
-                </n-button>
+                <n-space align="center" :size="8">
+                  <n-select
+                    v-model:value="cfCurrentAccountId"
+                    :options="cfAccountOptions"
+                    :placeholder="cfAccountOptions.length ? '未选择 CF 账号' : '请添加 CF 账号'"
+                    style="width: 160px"
+                    size="small"
+                    :loading="cfAccountsLoading"
+                    @update:value="onActivateCfAccount"
+                  />
+                  <n-button quaternary size="small" @click="showCfAccountModal = true">
+                    新增账号
+                  </n-button>
+                  <n-button
+                    quaternary
+                    tag="a"
+                    href="https://github.com/lengsukq/SkyLink"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    size="small"
+                  >
+                    GitHub
+                  </n-button>
+                </n-space>
               </div>
             </div>
           </n-layout-header>
@@ -42,12 +56,17 @@
           </n-layout-content>
         </n-layout>
       </n-message-provider>
+      <cf-account-form-modal
+        v-model:show="showCfAccountModal"
+        :editing-account="null"
+        @saved="onCfAccountSaved"
+      />
     </n-notification-provider>
   </n-config-provider>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, onMounted, watch, provide } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   NConfigProvider,
@@ -56,10 +75,14 @@ import {
   NLayoutContent,
   NSpace,
   NButton,
+  NSelect,
   NMessageProvider,
   NNotificationProvider,
 } from 'naive-ui'
 import NotifierBridge from './components/NotifierBridge.vue'
+import CfAccountFormModal from './components/CfAccountFormModal.vue'
+import api from './api/client'
+import { notifySuccess } from './ui/notify'
 
 const themeOverrides = {
   common: {
@@ -70,6 +93,11 @@ const themeOverrides = {
 const route = useRoute()
 const router = useRouter()
 
+const cfAccounts = ref([])
+const cfCurrentAccountId = ref(null)
+const cfAccountsLoading = ref(false)
+const showCfAccountModal = ref(false)
+
 const navItems = computed(() => [
   { path: '/dashboard', label: '仪表盘' },
   { path: '/mappings', label: '映射' },
@@ -77,6 +105,13 @@ const navItems = computed(() => [
   { path: '/ddns', label: 'DDNS' },
   { path: '/settings', label: '设置' },
 ])
+
+const cfAccountOptions = computed(() =>
+  cfAccounts.value.map((a) => ({
+    label: a.name || `账号 #${a.id}`,
+    value: a.id,
+  }))
+)
 
 const isLoginPage = computed(() => route.path === '/login')
 
@@ -89,6 +124,72 @@ function go(path) {
     router.push(path)
   }
 }
+
+async function fetchSettings() {
+  try {
+    const { data } = await api.get('/settings')
+    const id = data?.cf_current_account_id
+    cfCurrentAccountId.value = id && Number(id) > 0 ? Number(id) : null
+  } catch (_) {
+    cfCurrentAccountId.value = null
+  }
+}
+
+async function fetchCfAccounts() {
+  cfAccountsLoading.value = true
+  try {
+    const { data } = await api.get('/cf/accounts')
+    cfAccounts.value = data?.accounts || []
+  } finally {
+    cfAccountsLoading.value = false
+  }
+}
+
+async function onActivateCfAccount(id) {
+  if (!id) return
+  try {
+    await api.put(`/cf/accounts/${id}/activate`)
+    cfCurrentAccountId.value = id
+    notifySuccess('已切换', '当前 Cloudflare 账号已更新')
+  } catch (_) {
+    await fetchSettings()
+  }
+}
+
+function onCfAccountSaved(newId) {
+  fetchCfAccounts().then(() => {
+    if (newId) {
+      onActivateCfAccount(newId)
+    } else {
+      fetchSettings()
+    }
+  })
+}
+
+function refreshCfState() {
+  return Promise.all([fetchSettings(), fetchCfAccounts()])
+}
+
+provide('cfCurrentAccountId', cfCurrentAccountId)
+provide('cfAccounts', cfAccounts)
+provide('refreshCfState', refreshCfState)
+
+onMounted(() => {
+  if (route.path !== '/login') {
+    fetchSettings()
+    fetchCfAccounts()
+  }
+})
+
+watch(
+  () => route.path,
+  (path) => {
+    if (path !== '/login') {
+      fetchSettings()
+      fetchCfAccounts()
+    }
+  }
+)
 </script>
 
 <style>

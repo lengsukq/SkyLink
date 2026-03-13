@@ -3,7 +3,10 @@ package cloudflare
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 )
+
+const dnsRecordsPerPage = 100
 
 // DNSRecord DNS 记录
 type DNSRecord struct {
@@ -17,22 +20,42 @@ type DNSRecord struct {
 	ZoneName string `json:"zone_name"`
 }
 
-// dnsListResponse 列表响应
+// dnsListResponse 列表响应（含分页信息）
 type dnsListResponse struct {
-	Result []DNSRecord `json:"result"`
+	Result     []DNSRecord   `json:"result"`
+	ResultInfo *resultInfo  `json:"result_info,omitempty"`
 }
 
-// ListDNSRecords 列出 Zone 下的 DNS 记录
+type resultInfo struct {
+	Page       int `json:"page"`
+	PerPage    int `json:"per_page"`
+	TotalCount int `json:"total_count"`
+}
+
+// ListDNSRecords 列出 Zone 下全部 DNS 记录（自动分页拉取，超过 100 条也会全部返回）
 func (c *Client) ListDNSRecords(zoneID string) ([]DNSRecord, error) {
-	data, err := c.do("GET", "/zones/"+zoneID+"/dns_records?per_page=100", nil)
-	if err != nil {
-		return nil, err
+	var all []DNSRecord
+	page := 1
+	for {
+		path := "/zones/" + zoneID + "/dns_records?" + url.Values{
+			"per_page": {fmt.Sprint(dnsRecordsPerPage)},
+			"page":     {fmt.Sprint(page)},
+		}.Encode()
+		data, err := c.do("GET", path, nil)
+		if err != nil {
+			return nil, err
+		}
+		var res dnsListResponse
+		if err := json.Unmarshal(data, &res); err != nil {
+			return nil, err
+		}
+		all = append(all, res.Result...)
+		if len(res.Result) < dnsRecordsPerPage {
+			break
+		}
+		page++
 	}
-	var res dnsListResponse
-	if err := json.Unmarshal(data, &res); err != nil {
-		return nil, err
-	}
-	return res.Result, nil
+	return all, nil
 }
 
 // CreateDNSRecord 创建记录

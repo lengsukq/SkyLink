@@ -2,12 +2,12 @@
   <div>
     <page-header
       title="映射管理"
-      description="管理域名到后端服务的映射，可选配合 Cloudflare CNAME 一键创建。"
+      description="管理域名到后端服务的映射，可选配合 Cloudflare CNAME 一键创建。CF 状态基于 Cloudflare 页「获取最新」的缓存，若未同步请先到 Cloudflare 页拉取。"
     >
       <template #actions>
         <n-space>
           <n-button type="primary" @click="showAdd = true">添加映射</n-button>
-          <n-button @click="showOneClick = true">一键映射（含 CF CNAME）</n-button>
+          <n-button @click="openOneClick">一键映射（含 CF CNAME）</n-button>
           <n-button @click="load">刷新</n-button>
         </n-space>
       </template>
@@ -73,29 +73,71 @@
         </n-form-item>
       </n-form>
     </n-modal>
+
+    <n-modal
+      v-model:show="showNoCfHint"
+      preset="dialog"
+      title="需要 Cloudflare 账号"
+      positive-text="去添加"
+      @positive-click="showNoCfHint = false; showAddAccountModal = true"
+    >
+      <template #default>
+        请先在页面右上角添加并选择 Cloudflare 账号，才能使用一键映射创建 CNAME。
+      </template>
+    </n-modal>
+
+    <cf-account-form-modal
+      v-model:show="showAddAccountModal"
+      :editing-account="null"
+      @saved="onCfAccountSaved"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, h, onMounted, computed } from 'vue'
-import { NButton, NPopconfirm, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NSelect, NSpin, NEllipsis } from 'naive-ui'
+import { ref, h, onMounted, computed, inject } from 'vue'
+import { NButton, NPopconfirm, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NSelect, NSpin, NEllipsis, NTag } from 'naive-ui'
 import api from '../api/client'
+import { getAllCachedRecordsForAccount, setCachedRecords } from '../utils/cfRecordsCache'
 import PageHeader from '../components/PageHeader.vue'
 import EmptyState from '../components/EmptyState.vue'
+import CfAccountFormModal from '../components/CfAccountFormModal.vue'
 
 const list = ref([])
 const loading = ref(false)
 const showAdd = ref(false)
 const showEdit = ref(false)
 const showOneClick = ref(false)
+const showNoCfHint = ref(false)
+const showAddAccountModal = ref(false)
 const addForm = ref({ host: '', backend: '' })
 const oneClickForm = ref({ host: '', backend: '', zone_id: '', cname_target: '' })
 const editForm = ref({ id: null, host: '', backend: '' })
 
 const zones = ref([])
+const cfCurrentAccountId = inject('cfCurrentAccountId', ref(null))
+const refreshCfState = inject('refreshCfState', () => Promise.resolve())
 const zoneOptions = computed(() => zones.value.map((z) => ({ label: z.name, value: z.id })))
 
-const columns = [
+function normalizeName(name) {
+  return (name || '').trim().toLowerCase().replace(/\.$/, '')
+}
+
+const allCfRecords = computed(() => getAllCachedRecordsForAccount(cfCurrentAccountId.value))
+const cfRecordNamesSet = computed(() => {
+  const records = allCfRecords.value
+  return new Set(records.map((r) => normalizeName(r.name)))
+})
+
+function getCfStatus(host) {
+  if (cfCurrentAccountId.value == null) return { text: '未同步', type: 'default' }
+  if (allCfRecords.value.length === 0) return { text: '未同步', type: 'default' }
+  return cfRecordNamesSet.value.has(normalizeName(host))
+    ? { text: '已映射', type: 'success' }
+    : { text: '未映射', type: 'warning' }
+}
+
+const columns = computed(() => [
   {
     title: 'ID',
     key: 'id',
@@ -127,6 +169,15 @@ const columns = [
     },
   },
   {
+    title: 'CF 状态',
+    key: 'cfStatus',
+    width: 100,
+    render(row) {
+      const status = getCfStatus(row.host)
+      return h(NTag, { type: status.type, size: 'small' }, { default: () => status.text })
+    },
+  },
+  {
     title: '操作',
     key: 'actions',
     width: 160,
@@ -143,13 +194,13 @@ const columns = [
       })
     },
   },
-]
+])
 
 async function load() {
   loading.value = true
   try {
     const { data } = await api.get('/mappings')
-    list.value = data.list || []
+    list.value = data?.list || []
   } finally {
     loading.value = false
   }
@@ -172,6 +223,18 @@ async function onAdd() {
   return true
 }
 
+function openOneClick() {
+  if ((zones.value || []).length === 0) {
+    showNoCfHint.value = true
+    return
+  }
+  showOneClick.value = true
+}
+
+function onCfAccountSaved() {
+  refreshCfState().then(() => loadZones())
+}
+
 async function onOneClick() {
   if (!oneClickForm.value.backend?.trim()) return false
 
@@ -192,6 +255,14 @@ async function onOneClick() {
     zone_id: oneClickForm.value.zone_id,
     cname_target: oneClickForm.value.cname_target,
   })
+  const zoneId = oneClickForm.value.zone_id
+  if (zoneId && cfCurrentAccountId.value != null) {
+    try {
+      const { data } = await api.get(`/cf/zones/${zoneId}/records`)
+      const records = data?.records || []
+      setCachedRecords(cfCurrentAccountId.value, zoneId, records)
+    } catch (_) {}
+  }
   await load()
   return true
 }
