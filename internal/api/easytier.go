@@ -217,12 +217,19 @@ func (s *Server) postEasyTierDaemonStop(c *gin.Context) {
 func (s *Server) getEasyTierDaemonStatus(c *gin.Context) {
 	if s.easyTierDaemon == nil || s.easyTierCfg == nil || !s.easyTierCfg.DaemonEnabled {
 		c.JSON(http.StatusOK, gin.H{
-			"running": false,
+			"running":             false,
+			"daemon_mode_enabled": false,
 		})
 		return
 	}
 	state := s.easyTierDaemon.Status()
-	c.JSON(http.StatusOK, state)
+	c.JSON(http.StatusOK, gin.H{
+		"running":             state.Running,
+		"pid":                 state.PID,
+		"last_start_error":    state.LastStartErr,
+		"started_at":          state.StartedAt,
+		"daemon_mode_enabled": true,
+	})
 }
 
 func (s *Server) restartEasyTierDaemon(envPath string) {

@@ -4,42 +4,48 @@
       title="设置"
       description="管理控制台登录密码，以及一键映射时的默认 Cloudflare / FRP 配置。"
     />
-    <n-card title="管理密码" style="max-width: 520px; margin-top: 16px">
-      <n-form :model="pwForm" label-placement="left" label-width="100">
-        <n-form-item label="当前密码" required>
-          <n-input v-model:value="pwForm.old_password" type="password" show-password-on="click" placeholder="当前登录密码" />
-        </n-form-item>
-        <n-form-item label="新密码" required>
-          <n-input v-model:value="pwForm.new_password" type="password" show-password-on="click" placeholder="设置一个新密码" />
-        </n-form-item>
-      </n-form>
-      <n-space>
-        <n-button type="primary" :loading="loading" @click="changePassword">修改密码</n-button>
-        <n-button :disabled="loading || defaultsSaving" @click="logout">退出登录</n-button>
-      </n-space>
-      <p class="settings-hint">
-        修改成功后会自动更新本地保存的登录密码，下次访问将直接使用新密码登录。
-      </p>
-    </n-card>
+    <n-grid cols="1 s:1 m:2 l:2" x-gap="16" y-gap="16" class="page-section">
+      <n-gi>
+        <n-card title="管理密码" class="page-card">
+          <n-form :model="pwForm" label-placement="left" label-width="100">
+            <n-form-item label="当前密码" required>
+              <n-input v-model:value="pwForm.old_password" type="password" show-password-on="click" placeholder="当前登录密码" />
+            </n-form-item>
+            <n-form-item label="新密码" required>
+              <n-input v-model:value="pwForm.new_password" type="password" show-password-on="click" placeholder="设置一个新密码" />
+            </n-form-item>
+          </n-form>
+          <n-space>
+            <n-button type="primary" :loading="loading" @click="changePassword">修改密码</n-button>
+            <n-button :disabled="loading || defaultsSaving" @click="logout">退出登录</n-button>
+          </n-space>
+          <p class="settings-hint">
+            修改成功后会自动更新本地保存的登录密码，下次访问将直接使用新密码登录。
+          </p>
+        </n-card>
+      </n-gi>
 
-    <n-card title="FRP / Cloudflare 默认配置" style="max-width: 520px; margin-top: 16px">
-      <n-form :model="defaultsForm" label-placement="left" label-width="140">
-        <n-form-item label="FRP 固定域名（CNAME 目标）">
-          <n-input v-model:value="defaultsForm.frp_cname_target" placeholder="例如：xxx.sakurafrp.com（可留空）" />
-        </n-form-item>
-        <n-form-item label="CNAME 默认 proxied">
-          <n-switch v-model:value="defaultsForm.cf_cname_proxied" />
-        </n-form-item>
-      </n-form>
-      <n-space>
-        <n-button type="primary" :loading="defaultsSaving" @click="saveDefaults">保存</n-button>
-      </n-space>
-      <p class="settings-hint">
-        一键映射时如不填写 CNAME 目标，将自动使用这里的默认值。
-      </p>
-    </n-card>
+      <n-gi>
+        <n-card title="FRP / Cloudflare 默认配置" class="page-card">
+          <n-form :model="defaultsForm" label-placement="left" label-width="140">
+            <n-form-item label="FRP 固定域名（CNAME 目标）">
+              <n-input v-model:value="defaultsForm.frp_cname_target" placeholder="例如：xxx.sakurafrp.com" />
+            </n-form-item>
+            <n-form-item label="CNAME 默认 proxied">
+              <n-switch v-model:value="defaultsForm.cf_cname_proxied" />
+            </n-form-item>
+          </n-form>
+          <n-space>
+            <n-button type="primary" :loading="defaultsSaving" @click="saveDefaults">保存</n-button>
+          </n-space>
+          <p class="settings-hint">
+            一键映射功能会在 Cloudflare 中创建指向此 FRP 固定域名的 CNAME 记录；如未在此处配置，将无法使用一键映射创建 CNAME。
+          </p>
+        </n-card>
+      </n-gi>
+    </n-grid>
 
-    <n-card title="Cloudflare 账号管理" style="max-width: 720px; margin-top: 16px">
+    <n-card title="Cloudflare 账号管理" class="page-section page-card">
       <n-space vertical>
         <p class="settings-hint" style="margin: 0 0 12px 0">
           当前使用的账号请在页面右上角切换。在此可新增、编辑或删除账号。
@@ -63,7 +69,7 @@
 <script setup>
 import { h, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { NCard, NForm, NFormItem, NInput, NButton, NSpace, NSwitch, NDataTable, NPopconfirm } from 'naive-ui'
+import { NCard, NForm, NFormItem, NInput, NButton, NSpace, NSwitch, NDataTable, NPopconfirm, NGrid, NGi } from 'naive-ui'
 import api from '../api/client'
 import { notifySuccess } from '../ui/notify'
 import PageHeader from '../components/PageHeader.vue'

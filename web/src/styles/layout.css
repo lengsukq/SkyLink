@@ -1,0 +1,16 @@
+.page-section {
+  margin-top: 16px;
+}
+
+.page-card {
+  width: 100%;
+}
+
+.status-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.status-summary {
+  margin-left: auto;
+}

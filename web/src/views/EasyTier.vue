@@ -2,16 +2,88 @@
   <div>
     <page-header
       title="EasyTier"
-      description="配置并查看 mesh VPN 状态；映射时可选择 mesh 内节点作为后端。配置保存后会写入 data/easytier.env，请重启 EasyTier 容器使配置生效。"
+      description="配置并查看 mesh VPN 状态；映射时可选择 mesh 内节点作为后端。配置保存后会写入 data/easytier.env，请重启 EasyTier（容器或守护进程）使配置生效。"
     />
-    <n-card title="配置网络" style="max-width: 720px; margin-top: 16px">
-      <n-form ref="formRef" :model="form" label-placement="left" label-width="120">
-        <n-form-item label="EasyTier 版本（镜像 tag）">
-          <n-input-group>
-            <n-input v-model:value="form.image_tag" placeholder="如 v2.2.3 或 latest" />
-            <n-button :loading="versionCheckLoading" @click="checkUpdate">检查更新</n-button>
-          </n-input-group>
-          <template #feedback>
+
+    <n-card title="状态" class="page-section page-card">
+      <n-space vertical>
+        <n-space align="center">
+          <n-button size="small" :loading="statusLoading" @click="loadStatus">刷新</n-button>
+          <span v-if="status.version" class="status-version">当前运行版本: {{ status.version }}</span>
+          <span v-if="status.self_ipv4" class="status-self">本机 mesh IP: {{ status.self_ipv4 }}</span>
+          <span v-if="lastStatusUpdated" class="status-updated">上次刷新时间: {{ lastStatusUpdated }}</span>
+          <span
+            v-if="status.peers && status.routes"
+            class="status-hint status-summary"
+          >
+            Peers: {{ status.peers.length || 0 }} / Routes: {{ status.routes.length || 0 }}
+          </span>
+        </n-space>
+        <n-space align="center" style="margin-top: 4px">
+          <template v-if="daemonModeEnabled">
+            <span class="status-hint">
+              Daemon 状态：
+              <strong v-if="daemonStatus.running">运行中 (PID {{ daemonStatus.pid || '未知' }})</strong>
+              <span v-else>未运行</span>
+            </span>
+            <n-button size="tiny" @click="startDaemon">启动</n-button>
+            <n-button size="tiny" @click="stopDaemon" :disabled="!daemonStatus.running">停止</n-button>
+            <n-button size="tiny" @click="restartDaemon">重启</n-button>
+          </template>
+          <template v-else>
+            <span class="status-hint">
+              当前未启用 EasyTier 守护进程模式，通常表示你通过 Docker / docker compose 管理 EasyTier 容器。
+              请在下方完成版本与网络配置后，通过容器编排系统启动或重启 EasyTier。
+            </span>
+          </template>
+        </n-space>
+        <div v-if="daemonStatus.last_start_error" class="status-error">
+          上次启动错误：{{ daemonStatus.last_start_error }}
+        </div>
+        <div v-if="!form.enabled" class="status-hint">
+          <span v-if="daemonModeEnabled">
+            EasyTier 当前未启用。请在下方开启“启用”并保存配置，然后使用上方按钮启动 EasyTier 守护进程。
+          </span>
+          <span v-else>
+            EasyTier 当前未启用。请在下方开启“启用”并保存配置，然后在 Docker / docker compose 中启动或重启 EasyTier 容器。
+          </span>
+        </div>
+        <div v-else-if="status.error" class="status-error">
+          EasyTier 已启用，但状态获取失败：{{ status.error }}。请检查 EasyTier 是否正在运行以及 RPC 地址配置是否正确。
+        </div>
+        <div v-else-if="status.ok && !status.peers.length && !status.routes.length" class="status-hint">
+          EasyTier 已运行，但当前没有任何 peers 或路由；这通常表示你是第一个节点，或尚未成功加入到目标网络。
+        </div>
+        <div class="status-table-wrapper">
+          <n-data-table
+            v-if="status.peers && status.peers.length"
+            :columns="peerColumns"
+            :data="status.peers"
+            :bordered="false"
+            size="small"
+          />
+        </div>
+        <n-collapse v-if="status.routes && status.routes.length">
+          <n-collapse-item title="路由表" name="routes">
+            <div class="status-table-wrapper">
+              <n-data-table :columns="routeColumns" :data="status.routes" :bordered="false" size="small" />
+            </div>
+          </n-collapse-item>
+        </n-collapse>
+      </n-space>
+    </n-card>
+
+    <n-grid cols="1 s:1 m:2 l:2" x-gap="16" y-gap="16" class="page-section">
+      <n-gi>
+        <n-card title="版本与运行时" class="page-card">
+          <n-space vertical size="small">
+            <n-space align="center">
+              <span class="field-label">EasyTier 版本（镜像 tag）</span>
+              <n-input-group style="flex: 1">
+                <n-input v-model:value="form.image_tag" placeholder="如 v2.2.3 或 latest" />
+                <n-button :loading="versionCheckLoading" @click="checkUpdate">检查更新</n-button>
+              </n-input-group>
+            </n-space>
             <span v-if="versionCheck.latest_version" class="easytier-version-hint">
               当前配置: {{ versionCheck.current_version || form.image_tag || '未设置' }}；最新: {{ versionCheck.latest_version }}
               <a v-if="versionCheck.release_url" :href="versionCheck.release_url" target="_blank" rel="noopener">Release</a>
@@ -24,111 +96,127 @@
               </n-button>
               <span v-if="runtimeVersion">（已安装: {{ runtimeVersion }}）</span>
             </span>
+            <span v-if="runtimeError" class="status-error">
+              {{ runtimeError }}
+            </span>
             <span v-if="platformError" class="status-error">
               {{ platformError }}
             </span>
-          </template>
-        </n-form-item>
-        <n-form-item label="网络名">
-          <n-input v-model:value="form.network_name" placeholder="网络标识（ET_NETWORK_NAME，对应 EasyTier network_identity.name）" />
-        </n-form-item>
-        <n-form-item label="网络密钥">
-          <n-input
-            v-model:value="form.network_secret"
-            type="password"
-            show-password-on="click"
-            placeholder="网络密钥（ET_NETWORK_SECRET，对应 EasyTier network_identity.secret）"
-          />
-        </n-form-item>
-        <n-form-item label="虚拟 IPv4 地址">
-          <n-space align="center">
-            <n-input
-              v-model:value="form.ipv4"
-              style="max-width: 220px"
-              placeholder="如 10.0.111.99（mesh 内 IP）"
-            />
-            <span style="font-size: 13px; color: #999">/24</span>
-            <n-checkbox v-model:checked="form.dhcp">DHCP</n-checkbox>
           </n-space>
-        </n-form-item>
-        <n-form-item label="网络方式">
-          <n-radio-group v-model:value="networkMode">
-            <n-space>
-              <n-radio value="public">公共服务器</n-radio>
-              <n-radio value="manual">手动</n-radio>
-              <n-radio value="standalone">独立</n-radio>
-            </n-space>
-          </n-radio-group>
-        </n-form-item>
-        <n-form-item v-if="networkMode === 'public'" label="公共服务器">
-          <n-input
-            v-model:value="publicServer"
-            placeholder="如 tcp://public.easytier.cn:11010/IPv4"
-            @update:value="(v) => (form.peers = v)"
-          />
-          <template #feedback>
-            <span class="status-hint">
-              示例：tcp://8.8.8.8:11010，输入后在下拉框中选择生效。
-            </span>
-          </template>
-        </n-form-item>
-        <n-form-item
-          v-else-if="networkMode === 'manual'"
-          label="初始节点（peers）"
-        >
-          <n-input
-            v-model:value="form.peers"
-            type="textarea"
-            :rows="2"
-            placeholder="如 tcp://public.easytier.cn:11010，多个用逗号或换行（对应 ET_PEERS / peers[].uri）"
-          />
-        </n-form-item>
-        <n-form-item v-else label="初始节点（peers）">
-          <n-input
-            type="textarea"
-            :rows="2"
-            disabled
-            placeholder="独立模式下无需填写初始节点，将作为第一个节点加入网络。"
-          />
-        </n-form-item>
-        <n-divider />
-        <n-form-item label="主机名">
-          <n-input v-model:value="form.hostname" placeholder="ET_HOSTNAME，留空则按默认行为" />
-        </n-form-item>
-        <n-form-item label="公网发现节点（external-node）">
-          <n-input
-            v-model:value="form.external_node"
-            placeholder="如 tcp://public.easytier.cn:11010（ET_EXTERNAL_NODE，仅用于公网发现，可选）"
-          />
-        </n-form-item>
-        <n-form-item label="子网代理（proxy-networks）">
-          <n-input
-            v-model:value="form.proxy_networks"
-            type="textarea"
-            :rows="2"
-            placeholder="如 10.0.0.0/24，多个子网用逗号或换行（ET_PROXY_NETWORKS / vpn_portal_config.proxy_networks）"
-          />
-        </n-form-item>
-        <n-form-item label="启用">
-          <n-switch v-model:value="form.enabled" />
-        </n-form-item>
-        <n-form-item v-if="showAdvanced" label="RPC 地址">
-          <n-input v-model:value="form.rpc_portal" placeholder="SkyLink 连接 EasyTier 的地址，如 easytier:15888" />
-        </n-form-item>
-        <n-form-item v-if="showAdvanced" label="VPN Portal（WireGuard）">
-          <n-input
-            v-model:value="form.vpn_portal"
-            placeholder="如 wg://0.0.0.0:11013/10.14.14.0/24"
-          />
-        </n-form-item>
-      </n-form>
-      <n-space>
-        <n-button type="primary" :loading="saving" @click="save">保存配置</n-button>
-        <n-button @click="showAdvanced = !showAdvanced">{{ showAdvanced ? '收起高级' : '高级' }}</n-button>
-      </n-space>
-    </n-card>
+        </n-card>
+      </n-gi>
 
-    <n-card title="WireGuard 客户端配置（VPN Portal）" style="max-width: 800px; margin-top: 16px">
+      <n-gi>
+        <n-card title="网络配置" class="page-card">
+          <div class="status-hint" style="margin-bottom: 8px">
+            启用后，可通过顶部状态卡片控制 EasyTier 运行，并在本页查看 mesh 状态与 WireGuard 配置。
+          </div>
+          <n-form ref="formRef" :model="form" label-placement="left" label-width="120">
+            <n-form-item label="网络名">
+              <n-input v-model:value="form.network_name" placeholder="网络标识（ET_NETWORK_NAME，对应 EasyTier network_identity.name）" />
+            </n-form-item>
+            <n-form-item label="网络密钥">
+              <n-input
+                v-model:value="form.network_secret"
+                type="password"
+                show-password-on="click"
+                placeholder="网络密钥（ET_NETWORK_SECRET，对应 EasyTier network_identity.secret）"
+              />
+            </n-form-item>
+            <n-form-item label="虚拟 IPv4 地址">
+              <n-space align="center">
+                <n-input
+                  v-model:value="form.ipv4"
+                  class="ipv4-input"
+                  placeholder="如 10.0.111.99（mesh 内 IP）"
+                />
+                <span class="cidr-suffix">/24</span>
+                <n-checkbox v-model:checked="form.dhcp">DHCP</n-checkbox>
+              </n-space>
+            </n-form-item>
+            <n-form-item label="网络方式">
+              <n-radio-group v-model:value="networkMode">
+                <n-space>
+                  <n-radio value="public">公共服务器</n-radio>
+                  <n-radio value="manual">手动</n-radio>
+                  <n-radio value="standalone">独立</n-radio>
+                </n-space>
+              </n-radio-group>
+            </n-form-item>
+            <n-form-item v-if="networkMode === 'public'" label="公共服务器">
+              <n-input
+                v-model:value="publicServer"
+                placeholder="如 tcp://public.easytier.cn:11010/IPv4"
+                @update:value="(v) => (form.peers = v)"
+              />
+              <template #feedback>
+                <span class="status-hint">
+                  示例：tcp://8.8.8.8:11010，输入后在下拉框中选择生效。
+                </span>
+              </template>
+            </n-form-item>
+            <n-form-item
+              v-else-if="networkMode === 'manual'"
+              label="初始节点（peers）"
+            >
+              <n-input
+                v-model:value="form.peers"
+                type="textarea"
+                :rows="2"
+                placeholder="如 tcp://public.easytier.cn:11010，多个用逗号或换行（对应 ET_PEERS / peers[].uri）"
+              />
+            </n-form-item>
+            <n-form-item v-else label="初始节点（peers）">
+              <n-input
+                type="textarea"
+                :rows="2"
+                disabled
+                placeholder="独立模式下无需填写初始节点，将作为第一个节点加入网络。"
+              />
+            </n-form-item>
+            <n-divider />
+            <n-form-item label="主机名">
+              <n-input v-model:value="form.hostname" placeholder="ET_HOSTNAME，留空则按默认行为" />
+            </n-form-item>
+            <n-form-item label="公网发现节点（external-node）">
+              <n-input
+                v-model:value="form.external_node"
+                placeholder="如 tcp://public.easytier.cn:11010（ET_EXTERNAL_NODE，仅用于公网发现，可选）"
+              />
+            </n-form-item>
+            <n-form-item label="子网代理（proxy-networks）">
+              <n-input
+                v-model:value="form.proxy_networks"
+                type="textarea"
+                :rows="2"
+                placeholder="如 10.0.0.0/24，多个子网用逗号或换行（ET_PROXY_NETWORKS / vpn_portal_config.proxy_networks）"
+              />
+            </n-form-item>
+            <n-form-item label="启用">
+              <n-switch v-model:value="form.enabled" />
+            </n-form-item>
+            <n-form-item v-if="showAdvanced" label="RPC 地址">
+              <n-input v-model:value="form.rpc_portal" placeholder="SkyLink 连接 EasyTier 的地址，如 easytier:15888" />
+            </n-form-item>
+            <n-form-item v-if="showAdvanced" label="VPN Portal（WireGuard）">
+              <n-input
+                v-model:value="form.vpn_portal"
+                placeholder="如 wg://0.0.0.0:11013/10.14.14.0/24"
+              />
+            </n-form-item>
+          </n-form>
+          <n-space>
+            <n-button type="primary" :loading="saving" @click="save">保存配置</n-button>
+            <n-button @click="showAdvanced = !showAdvanced">{{ showAdvanced ? '收起高级' : '高级' }}</n-button>
+          </n-space>
+        </n-card>
+      </n-gi>
+    </n-grid>
+
+    <n-card title="WireGuard 客户端配置（VPN Portal）" class="page-section page-card">
+      <div class="status-hint" style="margin-bottom: 8px">
+        需要在上方网络配置中启用 VPN Portal 后再获取配置。
+      </div>
       <n-space vertical>
         <n-space align="center">
           <n-button size="small" :loading="vpnPortalLoading" @click="loadVPNPortalConfig">获取配置</n-button>
@@ -146,57 +234,12 @@
         />
       </n-space>
     </n-card>
-
-    <n-card title="状态" style="max-width: 800px; margin-top: 16px">
-      <n-space vertical>
-        <n-space align="center">
-          <n-button size="small" :loading="statusLoading" @click="loadStatus">刷新</n-button>
-          <span v-if="status.version" class="status-version">当前运行版本: {{ status.version }}</span>
-          <span v-if="status.self_ipv4" class="status-self">本机 mesh IP: {{ status.self_ipv4 }}</span>
-          <span v-if="lastStatusUpdated" class="status-updated">上次刷新时间: {{ lastStatusUpdated }}</span>
-        </n-space>
-        <n-space align="center" style="margin-top: 4px">
-          <span class="status-hint">
-            Daemon 状态：
-            <strong v-if="daemonStatus.running">运行中 (PID {{ daemonStatus.pid || '未知' }})</strong>
-            <span v-else>未运行</span>
-          </span>
-          <n-button size="tiny" @click="startDaemon">启动</n-button>
-          <n-button size="tiny" @click="stopDaemon" :disabled="!daemonStatus.running">停止</n-button>
-          <n-button size="tiny" @click="restartDaemon">重启</n-button>
-        </n-space>
-        <div v-if="daemonStatus.last_start_error" class="status-error">
-          上次启动错误：{{ daemonStatus.last_start_error }}
-        </div>
-        <div v-if="!form.enabled" class="status-hint">
-          EasyTier 当前未启用。请在上方开启“启用”并保存配置，然后在 docker compose 中启动/重启 <code>easytier</code> 服务。
-        </div>
-        <div v-else-if="status.error" class="status-error">
-          EasyTier 已启用，但状态获取失败：{{ status.error }}。请检查 EasyTier 容器是否正在运行以及 RPC 地址配置是否正确。
-        </div>
-        <div v-else-if="status.ok && !status.peers.length && !status.routes.length" class="status-hint">
-          EasyTier 已运行，但当前没有任何 peers 或路由；这通常表示你是第一个节点，或尚未成功加入到目标网络。
-        </div>
-        <n-data-table
-          v-if="status.peers && status.peers.length"
-          :columns="peerColumns"
-          :data="status.peers"
-          :bordered="false"
-          size="small"
-        />
-        <n-collapse v-if="status.routes && status.routes.length">
-          <n-collapse-item title="路由表" name="routes">
-            <n-data-table :columns="routeColumns" :data="status.routes" :bordered="false" size="small" />
-          </n-collapse-item>
-        </n-collapse>
-      </n-space>
-    </n-card>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { NCard, NForm, NFormItem, NInput, NInputGroup, NButton, NSpace, NDataTable, NCollapse, NCollapseItem, NSwitch, NRadioGroup, NRadio, NCheckbox, NDivider } from 'naive-ui'
+import { NCard, NForm, NFormItem, NInput, NInputGroup, NButton, NSpace, NDataTable, NCollapse, NCollapseItem, NSwitch, NRadioGroup, NRadio, NCheckbox, NDivider, NGrid, NGi } from 'naive-ui'
 import api from '../api/client'
 import { notifySuccess, notifyError } from '../ui/notify'
 import PageHeader from '../components/PageHeader.vue'
@@ -222,6 +265,7 @@ const daemonStatus = reactive({
   pid: 0,
   last_start_error: '',
 })
+const daemonModeEnabled = ref(false)
 const networkMode = ref('manual')
 const publicServer = ref(DEFAULT_PUBLIC_SERVER)
 const showAdvanced = ref(false)
@@ -258,6 +302,7 @@ const platform = reactive({
 const runtimeInstalling = ref(false)
 const runtimeVersion = ref('')
 const platformError = ref('')
+const runtimeError = ref('')
 
 const peerColumns = [
   { title: 'IPv4', key: 'ipv4', width: 120 },
@@ -402,10 +447,12 @@ async function loadDaemonStatus() {
     daemonStatus.running = !!data?.running
     daemonStatus.pid = data?.pid || 0
     daemonStatus.last_start_error = data?.last_start_error || ''
+    daemonModeEnabled.value = !!data?.daemon_mode_enabled
   } catch (_) {
     daemonStatus.running = false
     daemonStatus.pid = 0
     daemonStatus.last_start_error = ''
+    daemonModeEnabled.value = false
   }
 }
 
@@ -434,6 +481,7 @@ async function restartDaemon() {
 
 async function installRuntime() {
   runtimeInstalling.value = true
+  runtimeError.value = ''
   try {
     const body = {}
     if (form.image_tag && form.image_tag.trim()) {
@@ -443,9 +491,14 @@ async function installRuntime() {
     if (data?.installed) {
       runtimeVersion.value = data.version || ''
       notifySuccess('运行时已准备就绪', `已为 ${platform.label || '当前平台'} 安装 EasyTier 运行时。`)
+      runtimeError.value = ''
     }
-  } catch (_) {
-    // 错误提示由全局拦截器处理
+  } catch (e) {
+    const message =
+      (e?.response?.data && (e.response.data.error || e.response.data.warning)) ||
+      e?.message ||
+      '下载/更新 EasyTier 运行时失败。'
+    runtimeError.value = `${message} 如当前官方未提供该平台的守护进程，可考虑手动安装并通过 SKYLINK_EASYTIER_DAEMON_PATH 指定路径。`
   } finally {
     runtimeInstalling.value = false
   }
@@ -539,6 +592,11 @@ onMounted(() => {
   display: block;
   margin-top: 4px;
   font-size: 12px;
+  color: #666;
+}
+.field-label {
+  width: 120px;
+  font-size: 13px;
   color: #666;
 }
 </style>

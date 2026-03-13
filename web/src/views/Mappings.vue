@@ -12,23 +12,25 @@
         </n-space>
       </template>
     </page-header>
-    <n-spin :show="loading">
-      <n-data-table
-        :columns="columns"
-        :data="list"
-        :bordered="false"
-        :single-line="false"
-      >
-        <template #empty>
-          <empty-state
-            title="当前暂无映射"
-            description="可以为自己的域名创建到本地或内网服务的反向代理。"
-            primary-text="添加映射"
-            @primary="showAdd = true"
-          />
-        </template>
-      </n-data-table>
-    </n-spin>
+    <n-card class="page-section page-card">
+      <n-spin :show="loading">
+        <n-data-table
+          :columns="columns"
+          :data="list"
+          :bordered="false"
+          :single-line="false"
+        >
+          <template #empty>
+            <empty-state
+              title="当前暂无映射"
+              description="可以为自己的域名创建到本地或内网服务的反向代理。"
+              primary-text="添加映射"
+              @primary="showAdd = true"
+            />
+          </template>
+        </n-data-table>
+      </n-spin>
+    </n-card>
 
     <n-modal v-model:show="showAdd" title="添加映射" preset="dialog" positive-text="添加" @positive-click="onAdd">
       <n-form :model="addForm" label-placement="left" label-width="80" style="padding: 16px 0">
@@ -54,6 +56,19 @@
       </n-form>
     </n-modal>
 
+    <n-modal
+      v-model:show="showNoFrpHint"
+      preset="dialog"
+      title="需要设置 FRP 固定域名"
+      positive-text="前往设置"
+      negative-text="取消"
+      @positive-click="goToSettings"
+    >
+      <template #default>
+        一键映射会在 Cloudflare 中创建指向 FRP 固定域名的 CNAME 记录，请先前往「设置」页填写 FRP 固定域名后再使用一键映射。
+      </template>
+    </n-modal>
+
     <n-modal v-model:show="showOneClick" title="一键映射" preset="dialog" positive-text="添加并创建 CF CNAME" @positive-click="onOneClick">
       <n-form :model="oneClickForm" label-placement="left" label-width="120" style="padding: 16px 0">
         <n-form-item label="一级域名（Zone）">
@@ -72,6 +87,24 @@
         </n-form-item>
         <n-form-item label="CNAME 目标">
           <n-input v-model:value="oneClickForm.cname_target" placeholder="可留空，使用设置页默认 FRP 域名" />
+          <template #feedback>
+            <span style="font-size: 12px; color: #666">
+              <template v-if="frpCnameTarget">
+                <template v-if="!oneClickForm.cname_target?.trim()">
+                  未填写时将使用设置页中的默认 FRP 固定域名：{{ frpCnameTarget }}。
+                </template>
+                <template v-else-if="oneClickForm.cname_target?.trim() === frpCnameTarget">
+                  当前将使用设置页中的默认 FRP 固定域名：{{ frpCnameTarget }}。
+                </template>
+                <template v-else>
+                  当前将覆盖设置页中的默认 FRP 固定域名。
+                </template>
+              </template>
+              <template v-else>
+                尚未在设置页配置 FRP 固定域名，将无法自动创建指向 FRP 的 Cloudflare CNAME。
+              </template>
+            </span>
+          </template>
         </n-form-item>
       </n-form>
     </n-modal>
@@ -122,12 +155,15 @@
 
 <script setup>
 import { ref, h, onMounted, computed, inject, watch } from 'vue'
-import { NButton, NPopconfirm, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NInputNumber, NSelect, NSpin, NEllipsis, NTag } from 'naive-ui'
+import { useRouter } from 'vue-router'
+import { NButton, NPopconfirm, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NInputNumber, NSelect, NSpin, NEllipsis, NTag, NCard } from 'naive-ui'
 import api from '../api/client'
 import { getAllCachedRecordsForAccount, setCachedRecords } from '../utils/cfRecordsCache'
 import PageHeader from '../components/PageHeader.vue'
 import EmptyState from '../components/EmptyState.vue'
 import CfAccountFormModal from '../components/CfAccountFormModal.vue'
+
+const router = useRouter()
 
 const list = ref([])
 const loading = ref(false)
@@ -135,6 +171,7 @@ const showAdd = ref(false)
 const showEdit = ref(false)
 const showOneClick = ref(false)
 const showNoCfHint = ref(false)
+const showNoFrpHint = ref(false)
 const showAddAccountModal = ref(false)
 const addForm = ref({ host: '', backend: '' })
 const oneClickForm = ref({ host: '', backend: '', zone_id: '', cname_target: '' })
@@ -151,6 +188,10 @@ const meshPort = ref(3000)
 const meshSelectedIpEdit = ref(null)
 const meshPortEdit = ref(3000)
 
+const settings = ref<{ frp_cname_target?: string }>({})
+
+const frpCnameTarget = computed(() => (settings.value.frp_cname_target || '').trim())
+
 async function loadMeshIps() {
   try {
     const { data } = await api.get('/easytier/status')
@@ -162,6 +203,15 @@ async function loadMeshIps() {
     meshIpOptions.value = ips
   } catch (_) {
     meshIpOptions.value = []
+  }
+}
+
+async function loadSettings() {
+  try {
+    const { data } = await api.get('/settings')
+    settings.value = data || {}
+  } catch (_) {
+    settings.value = {}
   }
 }
 
@@ -287,6 +337,10 @@ function openOneClick() {
     showNoCfHint.value = true
     return
   }
+  if (!frpCnameTarget.value) {
+    showNoFrpHint.value = true
+    return
+  }
   showOneClick.value = true
 }
 
@@ -326,6 +380,11 @@ async function onOneClick() {
   return true
 }
 
+function goToSettings() {
+  showNoFrpHint.value = false
+  router.push('/settings')
+}
+
 async function onEdit() {
   if (!editForm.value.backend?.trim()) return false
   await api.put(`/mappings/${editForm.value.id}`, { backend: editForm.value.backend })
@@ -341,5 +400,6 @@ async function remove(id) {
 onMounted(() => {
   load()
   loadZones()
+  loadSettings()
 })
 </script>

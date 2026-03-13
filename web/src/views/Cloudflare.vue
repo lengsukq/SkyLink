@@ -5,7 +5,7 @@
         title="Cloudflare DNS"
         description="在选定的 Zone 下管理 DNS 记录，可搜索和分页浏览。"
       />
-      <n-card v-if="!hasAnyCfAccount" style="max-width: 480px; margin-top: 24px">
+      <n-card v-if="!hasAnyCfAccount" class="page-section page-card">
         <empty-state
           title="需要添加 Cloudflare 账号"
           description="请先添加 Cloudflare 账号并选择 Zone，才能在此管理 DNS 记录。"
@@ -13,7 +13,7 @@
           @primary="showAddAccountModal = true"
         />
       </n-card>
-      <n-card v-else style="max-width: 480px; margin-top: 24px">
+      <n-card v-else class="page-section page-card">
         <empty-state
           title="请选择当前账号"
           description="您已添加了 Cloudflare 账号，请在页面右上角选择当前要使用的账号。"
@@ -55,32 +55,34 @@
           </n-space>
         </template>
       </page-header>
-      <div class="cloudflare-stats" v-if="filteredRecords.length">
-        共 {{ records.length }} 条记录，当前筛选出 {{ filteredRecords.length }} 条。
-      </div>
-      <n-spin :show="loading">
-        <n-data-table
-          :columns="recordColumns"
-          :data="pagedRecords"
-          :bordered="false"
-          :single-line="false"
-        >
-          <template #empty>
-            <empty-state
-              title="当前 Zone 下暂无 DNS 记录"
-              description="可以为应用创建 A / AAAA / CNAME 等记录，或切换到其他 Zone。"
-            />
-          </template>
-        </n-data-table>
-      </n-spin>
-      <n-pagination
-      v-model:page="page"
-      :page-size="pageSize"
-      :item-count="filteredRecords.length"
-      :page-sizes="[10, 20, 50, 100]"
-      show-size-picker
-      @update:page-size="onPageSizeChange"
-      />
+      <n-card class="page-section page-card">
+        <div class="cloudflare-stats" v-if="filteredRecords.length">
+          共 {{ records.length }} 条记录，当前筛选出 {{ filteredRecords.length }} 条。
+        </div>
+        <n-spin :show="loading">
+          <n-data-table
+            :columns="recordColumns"
+            :data="pagedRecords"
+            :bordered="false"
+            :single-line="false"
+          >
+            <template #empty>
+              <empty-state
+                title="当前 Zone 下暂无 DNS 记录"
+                description="可以为应用创建 A / AAAA / CNAME 等记录，或切换到其他 Zone。"
+              />
+            </template>
+          </n-data-table>
+        </n-spin>
+        <n-pagination
+          v-model:page="page"
+          :page-size="pageSize"
+          :item-count="filteredRecords.length"
+          :page-sizes="[10, 20, 50, 100]"
+          show-size-picker
+          @update:page-size="onPageSizeChange"
+        />
+      </n-card>
 
       <n-modal v-model:show="showCreate" title="新增 DNS 记录" preset="dialog" positive-text="创建" :loading="createLoading" @positive-click="onCreate">
       <n-form :model="createForm" label-placement="left" label-width="90" style="padding: 16px 0">

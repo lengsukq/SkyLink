@@ -107,6 +107,26 @@ func (d *RuntimeDownloader) EnsureDaemon(ctx context.Context, version string, pl
 	return targetPath, nil
 }
 
+// HasDaemon 返回指定版本和平台的 easytier-daemon 是否已在本地准备就绪。
+// 该方法不会触发下载，仅检查缓存目录中是否存在可执行文件。
+func (d *RuntimeDownloader) HasDaemon(version string, platform Platform) bool {
+	if d == nil {
+		return false
+	}
+	if platform.OS == "" || platform.Arch == "" {
+		platform = CurrentPlatform()
+	}
+	version = strings.TrimSpace(version)
+	if version == "" {
+		version = "latest"
+	}
+	targetPath := d.binaryPath(version, platform)
+	if fi, err := os.Stat(targetPath); err == nil && fi.Mode().IsRegular() && fi.Size() > 0 {
+		return true
+	}
+	return false
+}
+
 func (d *RuntimeDownloader) binaryPath(version string, platform Platform) string {
 	safeVersion := strings.TrimSpace(version)
 	if safeVersion == "" {

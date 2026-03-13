@@ -131,11 +131,17 @@ func (s *Server) oneClickMapping(c *gin.Context) {
 
 	// 走到这里说明：Cloudflare 可用，但缺少必要字段，仅返回提示
 	if strings.TrimSpace(req.ZoneID) == "" {
-		c.JSON(http.StatusOK, gin.H{"ok": true, "warning": "mapping added but zone_id not provided"})
+		c.JSON(http.StatusOK, gin.H{
+			"ok":      true,
+			"warning": "mapping added but zone_id not provided: local reverse proxy created, but no Cloudflare CNAME was created",
+		})
 		return
 	}
 	if strings.TrimSpace(req.CNAMETarget) == "" {
-		c.JSON(http.StatusOK, gin.H{"ok": true, "warning": "mapping added but cname_target not provided (and no default configured)"})
+		c.JSON(http.StatusOK, gin.H{
+			"ok":      true,
+			"warning": "FRP fixed domain (cname_target) is not configured; local reverse proxy has been created, but no Cloudflare CNAME was created",
+		})
 		return
 	}
 
