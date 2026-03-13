@@ -195,8 +195,12 @@ func (s *Store) WriteEasyTierEnv(path string, c *EasyTierConfig) error {
 		b.WriteString(escapeEnvValue(c.ProxyNetworks))
 		b.WriteString("\n")
 	}
+	// easytier-core --dhcp 仅接受 true/false，不能为 1/0
+	b.WriteString("ET_DHCP=")
 	if c.DHCP {
-		b.WriteString("ET_DHCP=1\n")
+		b.WriteString("true\n")
+	} else {
+		b.WriteString("false\n")
 	}
 	if c.VPNPortal != "" {
 		b.WriteString("ET_VPN_PORTAL=")

@@ -12,6 +12,8 @@
 
 # Go build cache / IDE
 /bin/
+tmp/
+build-errors.log
 
 # Node / Vite
 web/node_modules/

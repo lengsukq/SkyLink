@@ -205,6 +205,12 @@ func (s *Server) postEasyTierDaemonStart(c *gin.Context) {
 	if envPath == "" && s.easyTierEnvPath != "" {
 		envPath = s.easyTierEnvPath
 	}
+	if envPath != "" {
+		if err := s.store.WriteEasyTierEnv(envPath, cfg); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "写入 env 文件失败: " + err.Error()})
+			return
+		}
+	}
 	imageTag := cfg.ImageTag
 	if body := getDaemonStartBody(c); body.ImageTag != "" {
 		imageTag = body.ImageTag

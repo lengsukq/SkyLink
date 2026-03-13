@@ -29,6 +29,14 @@ go run ./cmd/server
 
 默认：反代 `:18080`，管理 `:19080`，数据库 `./data/skylink.db`。
 
+**后端热更新（开发时）：** 在项目根目录执行 `make dev`，修改 Go 代码会自动重新编译并重启（通过 [Air](https://github.com/air-verse/air)，无需单独安装）。
+
+```bash
+make dev
+```
+
+若已安装 Air，也可直接运行 `air`。如需指定配置文件，在 `.air.toml` 中把 `full_bin` 改为 `"./tmp/main -config config.yaml"`。
+
 ### 前端（可选，开发时热更新）
 
 ```bash

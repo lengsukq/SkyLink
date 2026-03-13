@@ -114,7 +114,8 @@ func (m *daemonManager) Start(ctx context.Context, cfg DaemonConfig) error {
 		return fmt.Errorf("load easytier env: %w", err)
 	}
 
-	cmd := exec.CommandContext(ctx, cfg.BinaryPath)
+	// 使用 exec.Command 而非 CommandContext：守护进程需长期运行，不能随请求 context 取消而被杀掉。
+	cmd := exec.Command(cfg.BinaryPath)
 	cmd.Env = append(os.Environ(), env...)
 	if cfg.WorkDir != "" {
 		cmd.Dir = cfg.WorkDir

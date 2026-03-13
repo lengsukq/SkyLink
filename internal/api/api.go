@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -442,9 +443,10 @@ func (s *Server) maybeStartEasyTierDaemon() {
 }
 
 // resolveDaemonPath 根据配置和自动下载器决定要使用的 easytier-daemon 路径。
-// 优先级：显式 DaemonPath > RuntimeDownloader 下载路径 > 默认二进制名（PATH）。
+// 优先级：显式 DaemonPath（含路径时）> RuntimeDownloader 下载路径 > 默认二进制名（PATH）。
+// 当 daemon_path 仅为 "easytier-core"（无目录）时视为未配置，优先使用已下载的运行时。
 func (s *Server) resolveDaemonPath(ctx context.Context, imageTag string) string {
-	if s.easyTierCfg != nil && strings.TrimSpace(s.easyTierCfg.DaemonPath) != "" {
+	if s.easyTierCfg != nil && isExplicitDaemonPath(s.easyTierCfg.DaemonPath) {
 		return s.easyTierCfg.DaemonPath
 	}
 	if s.easyTierRuntime != nil {
@@ -457,4 +459,18 @@ func (s *Server) resolveDaemonPath(ctx context.Context, imageTag string) string 
 		}
 	}
 	return easytier.DefaultDaemonBinary()
+}
+
+// isExplicitDaemonPath 为 true 表示配置中显式指定了可执行文件路径（绝对路径或含目录），
+// 而非仅默认二进制名 "easytier-core"（此时应优先使用 RuntimeDownloader 已下载的二进制）。
+func isExplicitDaemonPath(p string) bool {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return false
+	}
+	if filepath.IsAbs(p) {
+		return true
+	}
+	cleaned := filepath.Clean(p)
+	return strings.Contains(cleaned, string(filepath.Separator))
 }
