@@ -14,6 +14,17 @@ import (
 	"github.com/skylink/skylink/internal/store"
 )
 
+// daemonStartRequest 启动/重启 daemon 时可选传入的版本，用于解析二进制路径。
+type daemonStartRequest struct {
+	ImageTag string `json:"image_tag"`
+}
+
+func getDaemonStartBody(c *gin.Context) daemonStartRequest {
+	var body daemonStartRequest
+	_ = c.ShouldBindJSON(&body)
+	return body
+}
+
 // getEasyTierConfig 返回当前 EasyTier 配置（从 store 读取）
 func (s *Server) getEasyTierConfig(c *gin.Context) {
 	cfg, err := s.store.GetEasyTierConfig()
@@ -194,7 +205,11 @@ func (s *Server) postEasyTierDaemonStart(c *gin.Context) {
 	if envPath == "" && s.easyTierEnvPath != "" {
 		envPath = s.easyTierEnvPath
 	}
-	daemonPath := s.resolveDaemonPath(c.Request.Context(), cfg.ImageTag)
+	imageTag := cfg.ImageTag
+	if body := getDaemonStartBody(c); body.ImageTag != "" {
+		imageTag = body.ImageTag
+	}
+	daemonPath := s.resolveDaemonPath(c.Request.Context(), imageTag)
 	if !filepath.IsAbs(daemonPath) {
 		if _, err := exec.LookPath(daemonPath); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
@@ -256,7 +271,11 @@ func (s *Server) postEasyTierDaemonRestart(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "stop: " + err.Error()})
 		return
 	}
-	daemonPath := s.resolveDaemonPath(ctx, cfg.ImageTag)
+	imageTag := cfg.ImageTag
+	if body := getDaemonStartBody(c); body.ImageTag != "" {
+		imageTag = body.ImageTag
+	}
+	daemonPath := s.resolveDaemonPath(ctx, imageTag)
 	if !filepath.IsAbs(daemonPath) {
 		if _, err := exec.LookPath(daemonPath); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{

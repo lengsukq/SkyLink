@@ -73,6 +73,11 @@
             请在配置中开启 <code>easytier.daemon_enabled</code> 并重启 SkyLink 后，即可在此处控制守护进程。
           </span>
         </n-space>
+        <n-divider v-if="daemonModeEnabled" style="margin: 12px 0 8px 0">守护进程日志</n-divider>
+        <n-space v-if="daemonModeEnabled" vertical size="small">
+          <n-button size="tiny" :loading="daemonLogsLoading" @click="loadDaemonLogs">刷新</n-button>
+          <pre class="daemon-logs">{{ daemonLogs || '（暂无日志，启动守护进程后点击刷新）' }}</pre>
+        </n-space>
         <div v-if="!form.enabled" class="status-hint">
           <span v-if="daemonModeEnabled">
             EasyTier 当前未启用。请在下方开启“启用”并保存配置，然后使用上方按钮启动 EasyTier 守护进程。
@@ -158,11 +163,6 @@
               />
             </div>
             <span v-else class="runtime-hint">暂无已下载的运行时，请在上方选择版本与平台后点击「下载 EasyTier 运行时」。</span>
-            <n-divider style="margin: 12px 0 8px 0">守护进程日志</n-divider>
-            <n-space vertical size="small">
-              <n-button size="tiny" :loading="daemonLogsLoading" @click="loadDaemonLogs">刷新</n-button>
-              <pre class="daemon-logs">{{ daemonLogs || '（暂无日志，启动守护进程后点击刷新）' }}</pre>
-            </n-space>
           </n-space>
         </n-card>
       </n-gi>
@@ -762,8 +762,9 @@ async function loadDaemonLogs() {
 }
 
 async function startDaemon() {
+  const imageTag = selectedVersion.value || form.image_tag || ''
   try {
-    const { data } = await api.post('/easytier/daemon/start')
+    const { data } = await api.post('/easytier/daemon/start', { image_tag: imageTag || undefined })
     notifySuccess('已启动', data?.message || 'EasyTier daemon 已启动。')
     await loadDaemonStatus()
     await loadStatus()
@@ -788,8 +789,9 @@ async function stopDaemon() {
 }
 
 async function restartDaemon() {
+  const imageTag = selectedVersion.value || form.image_tag || ''
   try {
-    const { data } = await api.post('/easytier/daemon/restart')
+    const { data } = await api.post('/easytier/daemon/restart', { image_tag: imageTag || undefined })
     notifySuccess('已重启', data?.message || 'EasyTier daemon 已重启。')
     await loadDaemonStatus()
     await loadStatus()
