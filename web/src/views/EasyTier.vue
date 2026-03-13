@@ -69,6 +69,12 @@
             :title="daemonModeEnabled ? '' : '需在配置中开启 easytier.daemon_enabled 并重启 SkyLink'"
             @click="restartDaemon"
           >重启</n-button>
+          <n-button
+            size="tiny"
+            :loading="releasePortLoading"
+            title="结束占用 EasyTier 相关端口的进程（RPC 15888、listeners 11010–11013 等），便于重新启动"
+            @click="releasePort"
+          >解除端口占用</n-button>
           <span v-if="!daemonModeEnabled" class="status-hint">
             请在配置中开启 <code>easytier.daemon_enabled</code> 并重启 SkyLink 后，即可在此处控制守护进程。
           </span>
@@ -89,15 +95,19 @@
         <div v-else-if="status.ok && !status.peers.length && !status.routes.length" class="status-hint">
           EasyTier 已运行，但当前没有任何 peers 或路由；这通常表示你是第一个节点，或尚未成功加入到目标网络。
         </div>
-        <div class="status-table-wrapper">
-          <n-data-table
-            v-if="status.peers && status.peers.length"
-            :columns="peerColumns"
-            :data="status.peers"
-            :bordered="false"
-            size="small"
-          />
-        </div>
+        <template v-if="displayNodes.length">
+          <div class="status-hint" style="margin-bottom: 8px">
+            节点信息 {{ displayNodes.length }}
+          </div>
+          <div class="status-table-wrapper">
+            <n-data-table
+              :columns="nodeTableColumns"
+              :data="displayNodes"
+              :bordered="false"
+              size="small"
+            />
+          </div>
+        </template>
         <n-collapse v-if="status.routes && status.routes.length">
           <n-collapse-item title="路由表" name="routes">
             <div class="status-table-wrapper">
@@ -384,6 +394,7 @@ const installedList = ref([])
 const removingInstalledKey = ref('')
 const daemonLogs = ref('')
 const daemonLogsLoading = ref(false)
+const releasePortLoading = ref(false)
 
 const aggregatedErrors = computed(() => {
   const list = []
@@ -422,10 +433,44 @@ const selectedInstalledKey = computed({
   },
 })
 
-const peerColumns = [
-  { title: 'IPv4', key: 'ipv4', width: 120 },
-  { title: 'Hostname', key: 'hostname', ellipsis: true },
-  { title: 'Version', key: 'version', width: 90 },
+// 展示用节点列表：本机行 + peers，用于「节点信息」表
+const displayNodes = computed(() => {
+  const list = []
+  if (status.self_ipv4 || status.self_hostname) {
+    list.push({
+      ipv4: status.self_ipv4 || '—',
+      hostname: status.self_hostname || '—',
+      route: '本机',
+      tunnel: '—',
+      latency_ms: null,
+      version: status.version || '—',
+    })
+  }
+  ;(status.peers || []).forEach((p) => {
+    list.push({
+      ipv4: p.ipv4 || '—',
+      hostname: p.hostname || '—',
+      route: 'p2p',
+      tunnel: p.tunnel || '—',
+      latency_ms: p.latency_ms,
+      version: p.version || '—',
+    })
+  })
+  return list
+})
+
+const nodeTableColumns = [
+  { title: '虚拟IPv4地址', key: 'ipv4', width: 140, ellipsis: true },
+  { title: '主机名', key: 'hostname', ellipsis: true },
+  { title: '路由', key: 'route', width: 70 },
+  { title: '协议', key: 'tunnel', width: 100, ellipsis: true },
+  {
+    title: '延迟',
+    key: 'latency_ms',
+    width: 80,
+    render: (row) => (row.latency_ms != null && row.latency_ms !== '' ? `${Number(row.latency_ms)}ms` : '—'),
+  },
+  { title: '内核版本', key: 'version', width: 120, ellipsis: true },
 ]
 const routeColumns = [
   { title: 'IPv4', key: 'ipv4', width: 120 },
@@ -802,6 +847,26 @@ async function restartDaemon() {
     const hint = err?.hint || ''
     notifyError(msg, hint || undefined)
     await loadDaemonStatus()
+  }
+}
+
+async function releasePort() {
+  releasePortLoading.value = true
+  try {
+    const { data } = await api.post('/easytier/daemon/release-port')
+    const msg = data?.message || '已解除端口占用。'
+    if (data?.killed) {
+      const portsStr = (data.ports_freed || []).length ? ` 端口 ${(data.ports_freed || []).join(', ')}` : ''
+      notifySuccess('解除端口占用', `${msg} 已结束 ${data.killed} 个进程${portsStr}。`)
+    } else {
+      notifySuccess('解除端口占用', msg)
+    }
+    await loadDaemonStatus()
+  } catch (e) {
+    const err = e?.response?.data
+    notifyError(err?.error || e?.message || '解除端口占用失败')
+  } finally {
+    releasePortLoading.value = false
   }
 }
 

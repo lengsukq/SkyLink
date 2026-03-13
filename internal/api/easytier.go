@@ -336,6 +336,38 @@ func (s *Server) getEasyTierDaemonLogs(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"logs": logs})
 }
 
+// postEasyTierDaemonReleasePort 解除 EasyTier 相关端口占用（RPC 15888 + 默认 listeners 11010–11013，以及配置中的 rpc_portal 端口）
+func (s *Server) postEasyTierDaemonReleasePort(c *gin.Context) {
+	ports := make([]int, 0, len(easytier.DefaultEasyTierPorts)+1)
+	portSet := make(map[int]bool)
+	for _, p := range easytier.DefaultEasyTierPorts {
+		if !portSet[p] {
+			portSet[p] = true
+			ports = append(ports, p)
+		}
+	}
+	if q := easytier.ParsePortFromAddress(c.Query("port")); q != 0 && !portSet[q] {
+		ports = append(ports, q)
+	}
+	cfg, _ := s.store.GetEasyTierConfig()
+	if cfg != nil && cfg.RPCPortal != "" {
+		if rpcPort := easytier.ParsePortFromAddress(cfg.RPCPortal); rpcPort != 0 && !portSet[rpcPort] {
+			portSet[rpcPort] = true
+			ports = append(ports, rpcPort)
+		}
+	}
+	killed, portsFreed, err := easytier.KillProcessOnPorts(ports)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if killed == 0 {
+		c.JSON(http.StatusOK, gin.H{"message": "EasyTier 相关端口暂无占用进程", "ports": ports})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "已结束占用端口的进程", "killed": killed, "ports_freed": portsFreed})
+}
+
 func (s *Server) restartEasyTierDaemon(envPath string) {
 	if s.easyTierDaemon == nil || s.easyTierCfg == nil || !s.easyTierCfg.DaemonEnabled {
 		return

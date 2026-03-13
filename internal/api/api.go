@@ -174,6 +174,7 @@ func (s *Server) Handler() http.Handler {
 	r.POST("/api/easytier/daemon/start", s.postEasyTierDaemonStart)
 	r.POST("/api/easytier/daemon/stop", s.postEasyTierDaemonStop)
 	r.POST("/api/easytier/daemon/restart", s.postEasyTierDaemonRestart)
+	r.POST("/api/easytier/daemon/release-port", s.postEasyTierDaemonReleasePort)
 	r.GET("/api/easytier/daemon/status", s.getEasyTierDaemonStatus)
 	r.GET("/api/easytier/daemon/logs", s.getEasyTierDaemonLogs)
 

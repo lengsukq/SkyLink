@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -113,6 +114,9 @@ func parsePeerTable(out []byte) []Peer {
 	ipv4Col := -1
 	hostCol := -1
 	versionCol := -1
+	costCol := -1
+	latencyCol := -1
+	tunnelCol := -1
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
 		if line == "" {
@@ -125,15 +129,24 @@ func parsePeerTable(out []byte) []Peer {
 		if header == nil {
 			header = cols
 			for i, h := range header {
-				h = strings.ToLower(strings.TrimSpace(h))
-				if strings.HasPrefix(h, "ipv4") {
+				lower := strings.ToLower(strings.TrimSpace(h))
+				if strings.HasPrefix(lower, "ipv4") {
 					ipv4Col = i
 				}
-				if h == "hostname" {
+				if lower == "hostname" {
 					hostCol = i
 				}
-				if h == "version" {
+				if lower == "version" {
 					versionCol = i
+				}
+				if lower == "cost" {
+					costCol = i
+				}
+				if lower == "latency" || lower == "latency_ms" || lower == "lat" {
+					latencyCol = i
+				}
+				if lower == "tunnel" || lower == "protocol" {
+					tunnelCol = i
 				}
 			}
 			continue
@@ -147,6 +160,19 @@ func parsePeerTable(out []byte) []Peer {
 		}
 		if versionCol >= 0 && versionCol < len(cols) {
 			p.Version = strings.TrimSpace(cols[versionCol])
+		}
+		if costCol >= 0 && costCol < len(cols) {
+			if v, err := strconv.Atoi(strings.TrimSpace(cols[costCol])); err == nil {
+				p.Cost = v
+			}
+		}
+		if latencyCol >= 0 && latencyCol < len(cols) {
+			if v, err := strconv.ParseFloat(strings.TrimSpace(cols[latencyCol]), 64); err == nil {
+				p.Latency = v
+			}
+		}
+		if tunnelCol >= 0 && tunnelCol < len(cols) {
+			p.Tunnel = strings.TrimSpace(cols[tunnelCol])
 		}
 		if p.IPv4 != "" && isIPv4(p.IPv4) {
 			peers = append(peers, p)
