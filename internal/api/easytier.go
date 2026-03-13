@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"net/http"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -193,6 +195,15 @@ func (s *Server) postEasyTierDaemonStart(c *gin.Context) {
 		envPath = s.easyTierEnvPath
 	}
 	daemonPath := s.resolveDaemonPath(c.Request.Context(), cfg.ImageTag)
+	if !filepath.IsAbs(daemonPath) {
+		if _, err := exec.LookPath(daemonPath); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "未找到 EasyTier 守护进程可执行文件",
+				"hint":  "请在「版本与运行时」中选择版本与平台并点击「下载」，或配置 daemon_path 指向已安装的 easytier-core。",
+			})
+			return
+		}
+	}
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 	if err := s.easyTierDaemon.Start(ctx, easytier.DaemonConfig{
@@ -220,6 +231,51 @@ func (s *Server) postEasyTierDaemonStop(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "EasyTier daemon stopped"})
 }
 
+// postEasyTierDaemonRestart 手动重启 EasyTier daemon（先停止再启动）
+func (s *Server) postEasyTierDaemonRestart(c *gin.Context) {
+	if s.easyTierDaemon == nil || s.easyTierCfg == nil || !s.easyTierCfg.DaemonEnabled {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "EasyTier daemon mode is not enabled"})
+		return
+	}
+	cfg, err := s.store.GetEasyTierConfig()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if cfg == nil || !cfg.Enabled {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "EasyTier is not enabled in config"})
+		return
+	}
+	envPath := cfg.EnvFilePath
+	if envPath == "" && s.easyTierEnvPath != "" {
+		envPath = s.easyTierEnvPath
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+	defer cancel()
+	if err := s.easyTierDaemon.Stop(ctx); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "stop: " + err.Error()})
+		return
+	}
+	daemonPath := s.resolveDaemonPath(ctx, cfg.ImageTag)
+	if !filepath.IsAbs(daemonPath) {
+		if _, err := exec.LookPath(daemonPath); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "未找到 EasyTier 守护进程可执行文件",
+				"hint":  "请在「版本与运行时」中选择版本与平台并点击「下载」，或配置 daemon_path 指向已安装的 easytier-core。",
+			})
+			return
+		}
+	}
+	if err := s.easyTierDaemon.Start(ctx, easytier.DaemonConfig{
+		BinaryPath: daemonPath,
+		EnvFile:    envPath,
+	}); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "start: " + err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "EasyTier daemon restarted"})
+}
+
 // getEasyTierDaemonStatus 返回 EasyTier daemon 当前运行状态
 func (s *Server) getEasyTierDaemonStatus(c *gin.Context) {
 	if s.easyTierDaemon == nil || s.easyTierCfg == nil || !s.easyTierCfg.DaemonEnabled {
@@ -230,13 +286,29 @@ func (s *Server) getEasyTierDaemonStatus(c *gin.Context) {
 		return
 	}
 	state := s.easyTierDaemon.Status()
-	c.JSON(http.StatusOK, gin.H{
+	out := gin.H{
 		"running":             state.Running,
 		"pid":                 state.PID,
 		"last_start_error":    state.LastStartErr,
 		"started_at":          state.StartedAt,
 		"daemon_mode_enabled": true,
-	})
+	}
+	if state.BinaryPath != "" && s.easyTierRuntime != nil {
+		if v := s.easyTierRuntime.VersionFromBinaryPath(state.BinaryPath); v != "" {
+			out["started_version"] = v
+		}
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+// getEasyTierDaemonLogs 返回守护进程最近 stdout/stderr 输出
+func (s *Server) getEasyTierDaemonLogs(c *gin.Context) {
+	if s.easyTierDaemon == nil || s.easyTierCfg == nil || !s.easyTierCfg.DaemonEnabled {
+		c.JSON(http.StatusOK, gin.H{"logs": ""})
+		return
+	}
+	logs := s.easyTierDaemon.Logs()
+	c.JSON(http.StatusOK, gin.H{"logs": logs})
 }
 
 func (s *Server) restartEasyTierDaemon(envPath string) {
@@ -284,6 +356,23 @@ func (s *Server) getEasyTierPlatforms(c *gin.Context) {
 		"platforms": platforms,
 		"current":   gin.H{"os": current.OS, "arch": current.Arch, "label": currentLabel},
 	})
+}
+
+// getEasyTierRuntimeList 返回所有已下载的版本+平台列表，供版本管理使用
+func (s *Server) getEasyTierRuntimeList(c *gin.Context) {
+	if s.easyTierRuntime == nil {
+		c.JSON(http.StatusOK, gin.H{"items": []easytier.InstalledRuntime{}})
+		return
+	}
+	list, err := s.easyTierRuntime.ListInstalled()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"items": nil, "error": err.Error()})
+		return
+	}
+	if list == nil {
+		list = []easytier.InstalledRuntime{}
+	}
+	c.JSON(http.StatusOK, gin.H{"items": list})
 }
 
 // getEasyTierRuntimeInstalled 查询指定版本+平台是否已安装，返回 installed 与 path

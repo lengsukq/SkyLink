@@ -167,11 +167,14 @@ func (s *Server) Handler() http.Handler {
 	r.GET("/api/easytier/releases", s.getEasyTierReleases)
 	r.GET("/api/easytier/platforms", s.getEasyTierPlatforms)
 	r.GET("/api/easytier/runtime/installed", s.getEasyTierRuntimeInstalled)
+	r.GET("/api/easytier/runtime/list", s.getEasyTierRuntimeList)
 	r.POST("/api/easytier/runtime/install", s.postEasyTierRuntimeInstall)
 	r.DELETE("/api/easytier/runtime", s.deleteEasyTierRuntime)
 	r.POST("/api/easytier/daemon/start", s.postEasyTierDaemonStart)
 	r.POST("/api/easytier/daemon/stop", s.postEasyTierDaemonStop)
+	r.POST("/api/easytier/daemon/restart", s.postEasyTierDaemonRestart)
 	r.GET("/api/easytier/daemon/status", s.getEasyTierDaemonStatus)
+	r.GET("/api/easytier/daemon/logs", s.getEasyTierDaemonLogs)
 
 	// 其它路径回退到内嵌静态前端（SPA）
 	r.NoRoute(s.serveFrontend)

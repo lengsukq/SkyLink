@@ -8,7 +8,7 @@ const (
 	// 以守护进程模式为主，默认假定守护进程在本机监听 15888 端口。
 	DefaultEasyTierRPC  = "127.0.0.1:15888"
 	DefaultEasyTierTag = "latest"
-	DefaultEasyTierDaemonPath = "easytier-daemon"
+	DefaultEasyTierDaemonPath = "easytier-core"
 	DefaultEasyTierRuntimeDir = "./data/easytier-bin"
 )
 

@@ -1,6 +1,7 @@
 package easytier
 
 import (
+	"archive/zip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -65,6 +66,15 @@ func (d *RuntimeDownloader) EnsureDaemon(ctx context.Context, version string, pl
 	if fi, err := os.Stat(targetPath); err == nil && fi.Mode().IsRegular() && fi.Size() > 0 {
 		return targetPath, nil
 	}
+	// 当 version 为 "latest" 时，可能之前已下载到 resolvedTag 目录（如 v2.4.5），先检查该路径避免重复下载。
+	if version == "latest" {
+		if _, resolvedTag, err := d.resolveAssetURL(ctx, "latest", platform); err == nil && resolvedTag != "" {
+			resolvedPath := d.binaryPath(resolvedTag, platform)
+			if fi, err := os.Stat(resolvedPath); err == nil && fi.Mode().IsRegular() && fi.Size() > 0 {
+				return resolvedPath, nil
+			}
+		}
+	}
 
 	// 避免并发重复下载。
 	d.mu.Lock()
@@ -100,11 +110,12 @@ func (d *RuntimeDownloader) EnsureDaemon(ctx context.Context, version string, pl
 		d.mu.Unlock()
 	}()
 
-	// 真正开始下载。
-	if err := d.downloadDaemon(ctx, version, platform, targetPath); err != nil {
+	// 真正开始下载；downloadDaemon 会按 resolvedTag 写入，返回实际路径。
+	writtenPath, err := d.downloadDaemon(ctx, version, platform)
+	if err != nil {
 		return "", err
 	}
-	return targetPath, nil
+	return writtenPath, nil
 }
 
 // HasDaemon 返回指定版本和平台的 easytier-daemon 是否已在本地准备就绪。
@@ -125,6 +136,64 @@ func (d *RuntimeDownloader) HasDaemon(version string, platform Platform) bool {
 		return true
 	}
 	return false
+}
+
+// InstalledRuntime 表示已下载的某一版本+平台的运行时
+type InstalledRuntime struct {
+	Version string `json:"version"`
+	OS      string `json:"os"`
+	Arch    string `json:"arch"`
+	Path    string `json:"path"`
+}
+
+// ListInstalled 扫描 runtimeDir，返回所有已下载的版本+平台列表。
+func (d *RuntimeDownloader) ListInstalled() ([]InstalledRuntime, error) {
+	if d == nil {
+		return nil, nil
+	}
+	entries, err := os.ReadDir(d.runtimeDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var out []InstalledRuntime
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		version := e.Name()
+		versionDir := filepath.Join(d.runtimeDir, version)
+		subs, err := os.ReadDir(versionDir)
+		if err != nil {
+			continue
+		}
+		for _, sub := range subs {
+			if !sub.IsDir() {
+				continue
+			}
+			label := sub.Name()
+			parts := strings.SplitN(label, "-", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			platform := Platform{OS: parts[0], Arch: parts[1]}
+			targetPath := d.binaryPath(version, platform)
+			fi, err := os.Stat(targetPath)
+			if err != nil || !fi.Mode().IsRegular() || fi.Size() == 0 {
+				continue
+			}
+			absPath, _ := filepath.Abs(targetPath)
+			out = append(out, InstalledRuntime{
+				Version: version,
+				OS:      platform.OS,
+				Arch:    platform.Arch,
+				Path:    absPath,
+			})
+		}
+	}
+	return out, nil
 }
 
 // DaemonPath 返回指定版本和平台对应的本地二进制路径（不检查是否存在）
@@ -193,7 +262,35 @@ func (d *RuntimeDownloader) binaryPath(version string, platform Platform) string
 	return filepath.Join(d.runtimeDir, safeVersion, label, binName)
 }
 
-func (d *RuntimeDownloader) downloadDaemon(ctx context.Context, version string, platform Platform, targetPath string) error {
+// VersionFromBinaryPath 从绝对路径推导版本：若路径在 runtimeDir 下，返回相对路径的第一段（即版本目录名）；否则返回空。
+func (d *RuntimeDownloader) VersionFromBinaryPath(absPath string) string {
+	if d == nil || absPath == "" {
+		return ""
+	}
+	absDir, err := filepath.Abs(d.runtimeDir)
+	if err != nil {
+		return ""
+	}
+	absPathClean, err := filepath.Abs(absPath)
+	if err != nil {
+		return ""
+	}
+	rel, err := filepath.Rel(absDir, absPathClean)
+	if err != nil {
+		return ""
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return ""
+	}
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	if len(parts) < 1 {
+		return ""
+	}
+	return parts[0]
+}
+
+// downloadDaemon 下载指定版本与平台的守护进程，写入 resolvedTag 对应目录，返回实际写入的二进制路径。
+func (d *RuntimeDownloader) downloadDaemon(ctx context.Context, version string, platform Platform) (string, error) {
 	tag := strings.TrimSpace(version)
 	if tag == "" {
 		tag = "latest"
@@ -201,57 +298,132 @@ func (d *RuntimeDownloader) downloadDaemon(ctx context.Context, version string, 
 
 	assetURL, resolvedTag, err := d.resolveAssetURL(ctx, tag, platform)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	// 若 resolve 过程中调整了 tag，则更新路径，避免目录名与实际版本不符。
-	targetPath = d.binaryPath(resolvedTag, platform)
+	// 统一按 resolvedTag 路径写入，避免 "latest" 与真实 tag 不一致导致启动时找不到文件。
+	targetPath := d.binaryPath(resolvedTag, platform)
 
 	if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
-		return fmt.Errorf("mkdir runtime dir: %w", err)
+		return "", fmt.Errorf("mkdir runtime dir: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, assetURL, nil)
 	if err != nil {
-		return err
+		return "", err
 	}
 	resp, err := d.httpClient.Do(req)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download easytier-daemon: %s", resp.Status)
+		return "", fmt.Errorf("download easytier-daemon: %s", resp.Status)
+	}
+
+	if strings.HasSuffix(strings.ToLower(assetURL), ".zip") {
+		if err := d.downloadAndExtractZip(resp.Body, platform, targetPath); err != nil {
+			return "", err
+		}
+		return targetPath, nil
 	}
 
 	tmpPath := targetPath + ".tmp"
 	f, err := os.Create(tmpPath)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if _, err := io.Copy(f, resp.Body); err != nil {
 		_ = f.Close()
 		_ = os.Remove(tmpPath)
-		return err
+		return "", err
 	}
 	if err := f.Close(); err != nil {
 		_ = os.Remove(tmpPath)
-		return err
+		return "", err
 	}
 
 	if platform.OS != "windows" {
 		if err := os.Chmod(tmpPath, 0o755); err != nil {
 			_ = os.Remove(tmpPath)
-			return err
+			return "", err
 		}
 	}
 
 	if err := os.Rename(tmpPath, targetPath); err != nil {
 		_ = os.Remove(tmpPath)
+		return "", err
+	}
+
+	return targetPath, nil
+}
+
+// downloadAndExtractZip reads a zip from r, finds easytier-core or easytier-core.exe, and writes it to targetPath.
+func (d *RuntimeDownloader) downloadAndExtractZip(r io.Reader, platform Platform, targetPath string) error {
+	tmpZip, err := os.CreateTemp(filepath.Dir(targetPath), "easytier-*.zip")
+	if err != nil {
+		return fmt.Errorf("create temp zip: %w", err)
+	}
+	tmpZipPath := tmpZip.Name()
+	defer func() { _ = os.Remove(tmpZipPath) }()
+
+	if _, err := io.Copy(tmpZip, r); err != nil {
+		_ = tmpZip.Close()
+		return fmt.Errorf("download zip: %w", err)
+	}
+	if err := tmpZip.Close(); err != nil {
 		return err
 	}
 
+	zr, err := zip.OpenReader(tmpZipPath)
+	if err != nil {
+		return fmt.Errorf("open zip: %w", err)
+	}
+	defer zr.Close()
+
+	wantName := "easytier-core"
+	if platform.OS == "windows" {
+		wantName = "easytier-core.exe"
+	}
+	var found *zip.File
+	for _, f := range zr.File {
+		base := filepath.Base(f.Name)
+		if base == wantName || strings.ToLower(base) == "easytier-core.exe" || strings.ToLower(base) == "easytier-core" {
+			found = f
+			break
+		}
+	}
+	if found == nil {
+		return fmt.Errorf("zip does not contain %s", wantName)
+	}
+
+	rc, err := found.Open()
+	if err != nil {
+		return fmt.Errorf("open zip entry: %w", err)
+	}
+	defer rc.Close()
+
+	out, err := os.Create(targetPath)
+	if err != nil {
+		return fmt.Errorf("create target: %w", err)
+	}
+	if _, err := io.Copy(out, rc); err != nil {
+		_ = out.Close()
+		_ = os.Remove(targetPath)
+		return fmt.Errorf("extract: %w", err)
+	}
+	if err := out.Close(); err != nil {
+		_ = os.Remove(targetPath)
+		return err
+	}
+
+	if platform.OS != "windows" {
+		if err := os.Chmod(targetPath, 0o755); err != nil {
+			_ = os.Remove(targetPath)
+			return err
+		}
+	}
 	return nil
 }
 
@@ -304,6 +476,9 @@ func (d *RuntimeDownloader) resolveAssetURL(ctx context.Context, tag string, pla
 	return asset.BrowserDownloadURL, v.TagName, nil
 }
 
+// excludeAssetNames: release assets that are not the CLI daemon zip (e.g. GUI installers).
+var excludeAssetNames = []string{"gui", "magisk", "web-dashboard", "apk", "dmg", "appimage", ".deb", "setup.exe"}
+
 func selectDaemonAsset(assets []struct {
 	Name               string `json:"name"`
 	BrowserDownloadURL string `json:"browser_download_url"`
@@ -321,14 +496,17 @@ func selectDaemonAsset(assets []struct {
 	archHints := []string{platform.Arch}
 	switch platform.Arch {
 	case "amd64":
-		archHints = append(archHints, "x86_64")
+		archHints = append(archHints, "x86_64", "x64")
 	case "arm64":
 		archHints = append(archHints, "aarch64")
 	}
 
 	for i := range assets {
 		name := strings.ToLower(assets[i].Name)
-		if !strings.Contains(name, "core") {
+		if !strings.Contains(name, "easytier") {
+			continue
+		}
+		if containsAny(name, excludeAssetNames) {
 			continue
 		}
 		if !containsAny(name, osHints) {
@@ -338,12 +516,6 @@ func selectDaemonAsset(assets []struct {
 			continue
 		}
 		return &assets[i]
-	}
-	// 回退：若找不到严格匹配的，就返回第一个包含 core 的 asset。
-	for i := range assets {
-		if strings.Contains(strings.ToLower(assets[i].Name), "core") {
-			return &assets[i]
-		}
 	}
 	return nil
 }
@@ -364,7 +536,7 @@ type PlatformLabel struct {
 	Label string `json:"label"`
 }
 
-// supportedPlatforms 与 GitHub EasyTier releases 的 core 资产一致
+// supportedPlatforms 与 GitHub EasyTier releases 的 CLI zip 资产一致（easytier-<os>-<arch>-*.zip）
 var supportedPlatforms = []Platform{
 	{OS: "linux", Arch: "amd64"},
 	{OS: "linux", Arch: "arm64"},

@@ -2,16 +2,21 @@ package easytier
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
 )
+
+const daemonLogMaxBytes = 64 * 1024
 
 // DaemonConfig 描述 easytier-daemon 进程启动所需的最小配置。
 // 该结构仅关心二进制路径与 env 文件路径，具体网络参数仍由 env 文件提供。
@@ -27,6 +32,7 @@ type DaemonState struct {
 	PID          int       `json:"pid,omitempty"`
 	LastStartErr string    `json:"last_start_error,omitempty"`
 	StartedAt    time.Time `json:"started_at,omitempty"`
+	BinaryPath   string    `json:"binary_path,omitempty"` // 本次启动使用的二进制路径，用于推导「已启动版本」
 }
 
 // DaemonManager 管理单个 easytier-daemon 进程的生命周期。
@@ -34,6 +40,7 @@ type DaemonManager interface {
 	Start(ctx context.Context, cfg DaemonConfig) error
 	Stop(ctx context.Context) error
 	Status() DaemonState
+	Logs() string
 }
 
 type daemonManager struct {
@@ -42,11 +49,44 @@ type daemonManager struct {
 	state        DaemonState
 	lastEnvFile  string
 	lastWorkDir  string
+	logBuf       *daemonLogBuffer
+}
+
+// daemonLogBuffer 有界缓冲区，保留守护进程 stdout/stderr 的最近输出。
+type daemonLogBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+	max int
+}
+
+func (b *daemonLogBuffer) Write(p []byte) (n int, err error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	n, err = b.buf.Write(p)
+	if err != nil {
+		return n, err
+	}
+	for b.buf.Len() > b.max {
+		discard := b.buf.Len() - b.max
+		data := make([]byte, b.buf.Len())
+		copy(data, b.buf.Bytes())
+		b.buf.Reset()
+		_, _ = b.buf.Write(data[discard:])
+	}
+	return n, nil
+}
+
+func (b *daemonLogBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 // NewDaemonManager 创建一个新的 DaemonManager 实例。
 func NewDaemonManager() DaemonManager {
-	return &daemonManager{}
+	return &daemonManager{
+		logBuf: &daemonLogBuffer{max: daemonLogMaxBytes},
+	}
 }
 
 // Start 启动 easytier-daemon 进程；若已在运行则直接返回 nil。
@@ -95,12 +135,13 @@ func (m *daemonManager) Start(ctx context.Context, cfg DaemonConfig) error {
 	m.state.PID = cmd.Process.Pid
 	m.state.StartedAt = time.Now()
 	m.state.LastStartErr = ""
+	m.state.BinaryPath = cfg.BinaryPath
 	m.lastEnvFile = cfg.EnvFile
 	m.lastWorkDir = cfg.WorkDir
 
-	// 异步读取日志，避免阻塞管道。
-	go discardOutput(stdoutPipe)
-	go discardOutput(stderrPipe)
+	// 异步读取日志到有界缓冲区，供 API 查询。
+	go func() { _, _ = io.Copy(m.logBuf, stdoutPipe) }()
+	go func() { _, _ = io.Copy(m.logBuf, stderrPipe) }()
 
 	// 监控退出，更新状态。
 	go func() {
@@ -110,6 +151,7 @@ func (m *daemonManager) Start(ctx context.Context, cfg DaemonConfig) error {
 		if m.cmd == cmd {
 			m.state.Running = false
 			m.state.PID = 0
+			m.state.BinaryPath = ""
 		}
 	}()
 
@@ -145,6 +187,7 @@ func (m *daemonManager) Stop(ctx context.Context) error {
 
 	m.state.Running = false
 	m.state.PID = 0
+	m.state.BinaryPath = ""
 	return nil
 }
 
@@ -155,9 +198,20 @@ func (m *daemonManager) Status() DaemonState {
 	return m.state
 }
 
-// DefaultDaemonBinary 返回默认的 easytier-daemon 可执行名。
+// Logs 返回守护进程最近 stdout/stderr 输出（有界，约最近 64KB）。
+func (m *daemonManager) Logs() string {
+	if m.logBuf == nil {
+		return ""
+	}
+	return m.logBuf.String()
+}
+
+// DefaultDaemonBinary 返回默认的 EasyTier 守护进程可执行名（与 GitHub 发布包内名称一致）。
 func DefaultDaemonBinary() string {
-	return "easytier-daemon"
+	if runtime.GOOS == "windows" {
+		return "easytier-core.exe"
+	}
+	return "easytier-core"
 }
 
 // buildEnvFromFile 将简单的 KEY=VALUE env 文件解析为环境变量切片。
@@ -214,16 +268,4 @@ func splitEnvLine(line string) (key, value string, ok bool) {
 	return key, value, true
 }
 
-func discardOutput(r interface{}) {
-	switch v := r.(type) {
-	case *os.File:
-		buf := make([]byte, 1024)
-		for {
-			if _, err := v.Read(buf); err != nil {
-				return
-			}
-		}
-	default:
-	}
-}
 

@@ -5,11 +5,27 @@
       description="配置并查看 mesh VPN 状态；映射时可选择 mesh 内节点作为后端。推荐由 SkyLink 直接拉起并管理 EasyTier 守护进程，实现一站式使用。"
     />
 
+    <n-alert type="info" class="page-section" style="margin-bottom: 0">
+      <template #header>推荐步骤</template>
+      ① 在「版本与运行时」选择版本与平台并下载 → ② 在「网络配置」填写网络名、密钥等并启用、保存 → ③ 在本卡片选择已下载版本并点击「启动」。
+    </n-alert>
+
     <n-card title="状态" class="page-section page-card">
       <n-space vertical :size="12">
-        <n-space align="center">
+        <n-alert
+          v-if="aggregatedErrors.length"
+          type="error"
+          :title="aggregatedErrors.length === 1 ? aggregatedErrors[0] : '本页错误与警告'"
+        >
+          <template v-if="aggregatedErrors.length > 1">
+            <ul style="margin: 0; padding-left: 1.2em;">
+              <li v-for="(msg, i) in aggregatedErrors" :key="i">{{ msg }}</li>
+            </ul>
+          </template>
+        </n-alert>
+        <n-space align="center" flex-wrap="wrap">
           <n-button size="small" :loading="statusLoading" @click="loadStatus">刷新</n-button>
-          <span v-if="status.version" class="status-version">当前运行版本: {{ status.version }}</span>
+          <span class="status-version">已启动版本: {{ daemonStatus.started_version || status.version || '—' }}</span>
           <span v-if="status.self_ipv4" class="status-self">本机 mesh IP: {{ status.self_ipv4 }}</span>
           <span v-if="lastStatusUpdated" class="status-updated">上次刷新时间: {{ lastStatusUpdated }}</span>
           <span
@@ -19,27 +35,44 @@
             Peers: {{ status.peers.length || 0 }} / Routes: {{ status.routes.length || 0 }}
           </span>
         </n-space>
-        <n-space align="center" style="margin-top: 4px">
-          <template v-if="daemonModeEnabled">
-            <span class="status-hint">
-              Daemon 状态：
-              <strong v-if="daemonStatus.running">运行中 (PID {{ daemonStatus.pid || '未知' }})</strong>
-              <span v-else>未运行</span>
-            </span>
-            <n-button size="tiny" @click="startDaemon">启动</n-button>
-            <n-button size="tiny" @click="stopDaemon" :disabled="!daemonStatus.running">停止</n-button>
-            <n-button size="tiny" @click="restartDaemon">重启</n-button>
-          </template>
-          <template v-else>
-            <span class="status-hint">
-              当前未启用 EasyTier 守护进程模式。请在配置文件或环境变量中开启 easytier.daemon_enabled，
-              并确保已准备好 easytier-daemon 二进制，重启 SkyLink 后即可在此处控制守护进程。
-            </span>
-          </template>
+        <n-space align="center" style="margin-top: 8px" flex-wrap="wrap">
+          <span class="status-hint">已下载版本：</span>
+          <n-select
+            v-model:value="selectedInstalledKey"
+            :options="installedOptionsForStatus"
+            placeholder="选择要启动的版本"
+            clearable
+            style="min-width: 180px"
+            size="small"
+          />
+          <span class="status-hint">
+            Daemon 状态：
+            <strong v-if="daemonModeEnabled && daemonStatus.running">运行中 (PID {{ daemonStatus.pid || '未知' }})</strong>
+            <span v-else-if="daemonModeEnabled">未运行</span>
+            <span v-else>—</span>
+          </span>
+          <n-button
+            size="tiny"
+            :disabled="!daemonModeEnabled"
+            :title="daemonModeEnabled ? '' : '需在配置中开启 easytier.daemon_enabled 并重启 SkyLink'"
+            @click="startDaemon"
+          >启动</n-button>
+          <n-button
+            size="tiny"
+            :disabled="!daemonModeEnabled || !daemonStatus.running"
+            :title="!daemonModeEnabled ? '需在配置中开启 easytier.daemon_enabled 并重启 SkyLink' : (!daemonStatus.running ? '守护进程未运行' : '')"
+            @click="stopDaemon"
+          >停止</n-button>
+          <n-button
+            size="tiny"
+            :disabled="!daemonModeEnabled"
+            :title="daemonModeEnabled ? '' : '需在配置中开启 easytier.daemon_enabled 并重启 SkyLink'"
+            @click="restartDaemon"
+          >重启</n-button>
+          <span v-if="!daemonModeEnabled" class="status-hint">
+            请在配置中开启 <code>easytier.daemon_enabled</code> 并重启 SkyLink 后，即可在此处控制守护进程。
+          </span>
         </n-space>
-        <div v-if="daemonStatus.last_start_error" class="status-error">
-          上次启动错误：{{ daemonStatus.last_start_error }}
-        </div>
         <div v-if="!form.enabled" class="status-hint">
           <span v-if="daemonModeEnabled">
             EasyTier 当前未启用。请在下方开启“启用”并保存配置，然后使用上方按钮启动 EasyTier 守护进程。
@@ -47,11 +80,6 @@
           <span v-else>
             EasyTier 当前未启用。请在下方开启“启用”并保存配置，并确保已在本机启动 EasyTier 守护进程或在配置中开启守护进程模式。
           </span>
-        </div>
-        <div v-else-if="status.error" class="status-error">
-          EasyTier 已启用，但状态获取失败：{{ status.error }}。
-          <span v-if="status.hint" class="status-hint">{{ status.hint }}</span>
-          <span v-else class="status-hint">请检查 EasyTier 守护进程是否正在运行、RPC 地址是否正确，以及 easytier-cli 是否已安装并在 PATH 中。</span>
         </div>
         <div v-else-if="status.ok && !status.peers.length && !status.routes.length" class="status-hint">
           EasyTier 已运行，但当前没有任何 peers 或路由；这通常表示你是第一个节点，或尚未成功加入到目标网络。
@@ -107,7 +135,7 @@
                 移除
               </n-button>
             </n-space>
-            <span v-if="runtimeInstalled" class="runtime-hint">已安装：当前所选版本与平台</span>
+            <span v-if="runtimeInstalled" class="runtime-hint">已安装：当前所选版本与平台。启动/停止/重启请在顶部状态卡片选择已下载版本后操作。<span v-if="!daemonModeEnabled">（需先开启守护进程模式并重启 SkyLink）</span></span>
             <span v-else-if="selectedVersion && selectedPlatformKey" class="runtime-hint">未安装</span>
             <span v-if="releasesError" class="status-error">{{ releasesError }}</span>
             <span v-if="runtimeError" class="status-error">{{ runtimeError }}</span>
@@ -119,6 +147,21 @@
                 <a v-if="versionCheck.release_url" :href="versionCheck.release_url" target="_blank" rel="noopener">Release</a>
                 <n-button v-if="versionCheck.update_available" text type="primary" size="tiny" @click="useLatestVersion">使用此版本</n-button>
               </span>
+            </n-space>
+            <n-divider style="margin: 12px 0 8px 0">已下载的版本</n-divider>
+            <div v-if="installedList.length" class="status-table-wrapper">
+              <n-data-table
+                :columns="installedListColumns"
+                :data="installedList"
+                :bordered="false"
+                size="small"
+              />
+            </div>
+            <span v-else class="runtime-hint">暂无已下载的运行时，请在上方选择版本与平台后点击「下载 EasyTier 运行时」。</span>
+            <n-divider style="margin: 12px 0 8px 0">守护进程日志</n-divider>
+            <n-space vertical size="small">
+              <n-button size="tiny" :loading="daemonLogsLoading" @click="loadDaemonLogs">刷新</n-button>
+              <pre class="daemon-logs">{{ daemonLogs || '（暂无日志，启动守护进程后点击刷新）' }}</pre>
             </n-space>
           </n-space>
         </n-card>
@@ -221,10 +264,14 @@
                 v-model:value="form.vpn_portal"
                 placeholder="如 wg://0.0.0.0:11013/10.14.14.0/24"
               />
+              <template #feedback>
+                <span class="status-hint">启用并保存后，可在本页下方「WireGuard 客户端配置」卡片中获取客户端配置。</span>
+              </template>
             </n-form-item>
           </n-form>
           <n-space>
             <n-button type="primary" :loading="saving" @click="save">保存配置</n-button>
+            <n-button :loading="saving" @click="saveAndRestart">保存并重启</n-button>
             <n-button @click="showAdvanced = !showAdvanced">{{ showAdvanced ? '收起高级' : '高级' }}</n-button>
           </n-space>
         </n-card>
@@ -234,7 +281,7 @@
     <n-card title="WireGuard 客户端配置（VPN Portal）" class="page-section page-card">
       <n-space vertical :size="8">
         <div class="status-hint">
-          需要在上方网络配置中启用 VPN Portal 后再获取配置。
+          需先在上方网络配置的「高级」中启用并保存 VPN Portal，再点击获取配置。
         </div>
         <n-space align="center" :size="8">
           <n-button size="small" :loading="vpnPortalLoading" @click="loadVPNPortalConfig">获取配置</n-button>
@@ -256,8 +303,8 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
-import { NCard, NForm, NFormItem, NInput, NInputGroup, NButton, NSpace, NDataTable, NCollapse, NCollapseItem, NSwitch, NRadioGroup, NRadio, NCheckbox, NDivider, NGrid, NGi, NSelect } from 'naive-ui'
+import { ref, reactive, onMounted, h, computed } from 'vue'
+import { NCard, NForm, NFormItem, NInput, NInputGroup, NButton, NSpace, NDataTable, NCollapse, NCollapseItem, NSwitch, NRadioGroup, NRadio, NCheckbox, NDivider, NGrid, NGi, NSelect, NAlert } from 'naive-ui'
 import api from '../api/client'
 import { notifySuccess, notifyError } from '../ui/notify'
 import PageHeader from '../components/PageHeader.vue'
@@ -282,6 +329,7 @@ const daemonStatus = reactive({
   running: false,
   pid: 0,
   last_start_error: '',
+  started_version: '',
 })
 const daemonModeEnabled = ref(false)
 const networkMode = ref('manual')
@@ -332,6 +380,47 @@ const runtimeInstalled = ref(false)
 const runtimeVersion = ref('')
 const platformError = ref('')
 const runtimeError = ref('')
+const installedList = ref([])
+const removingInstalledKey = ref('')
+const daemonLogs = ref('')
+const daemonLogsLoading = ref(false)
+
+const aggregatedErrors = computed(() => {
+  const list = []
+  if (daemonStatus.last_start_error) list.push(`上次启动错误：${daemonStatus.last_start_error}`)
+  if (status.error) list.push(status.error)
+  if (releasesError.value) list.push(releasesError.value)
+  if (runtimeError.value) list.push(runtimeError.value)
+  if (platformError.value) list.push(platformError.value)
+  if (vpnPortal.error) list.push(vpnPortal.error)
+  return list
+})
+
+const installedOptionsForStatus = computed(() =>
+  installedList.value.map((row) => ({
+    label: `${row.version} (${row.os}/${row.arch})`,
+    value: installedItemKey(row),
+  }))
+)
+
+const selectedInstalledKey = computed({
+  get() {
+    const ver = selectedVersion.value || form.image_tag
+    const plat = selectedPlatformKey.value
+    if (!ver || !plat) return null
+    const key = `${ver}-${plat.replace('/', '-')}`
+    const found = installedList.value.some((row) => installedItemKey(row) === key)
+    return found ? key : null
+  },
+  set(val) {
+    if (!val) return
+    const row = installedList.value.find((r) => installedItemKey(r) === val)
+    if (row) {
+      selectedVersion.value = row.version
+      selectedPlatformKey.value = `${row.os}/${row.arch}`
+    }
+  },
+})
 
 const peerColumns = [
   { title: 'IPv4', key: 'ipv4', width: 120 },
@@ -343,6 +432,41 @@ const routeColumns = [
   { title: 'Hostname', key: 'hostname', ellipsis: true },
   { title: 'Proxy CIDRs', key: 'proxy_cidrs', ellipsis: true },
   { title: 'NextHop', key: 'next_hop_ipv4', width: 120 },
+]
+
+function installedItemKey(row) {
+  return `${row.version}-${row.os}-${row.arch}`
+}
+
+function isCurrentSelected(row) {
+  const plat = selectedPlatformKey.value ? `${row.os}/${row.arch}` === selectedPlatformKey.value : false
+  const ver = (selectedVersion.value || form.image_tag) && row.version === (selectedVersion.value || form.image_tag)
+  return plat && ver
+}
+
+const installedListColumns = [
+  { title: '版本', key: 'version', width: 100 },
+  { title: '平台', key: 'platform', width: 110, render: (row) => `${row.os}/${row.arch}` },
+  { title: '说明', key: 'current', width: 80, render: (row) => (isCurrentSelected(row) ? '当前使用' : '') },
+  {
+    title: '操作',
+    key: 'action',
+    width: 80,
+    render: (row) => {
+      const key = installedItemKey(row)
+      return h(
+        NButton,
+        {
+          size: 'tiny',
+          tertiary: true,
+          loading: removingInstalledKey.value === key,
+          disabled: removingInstalledKey.value !== '' && removingInstalledKey.value !== key,
+          onClick: () => removeInstalledItem(row),
+        },
+        { default: () => '移除' }
+      )
+    },
+  },
 ]
 
 async function loadConfig() {
@@ -449,6 +573,33 @@ async function loadRuntimeInstalled() {
   }
 }
 
+async function loadInstalledList() {
+  try {
+    const { data } = await api.get('/easytier/runtime/list')
+    installedList.value = data?.items || []
+  } catch (_) {
+    installedList.value = []
+  }
+}
+
+async function removeInstalledItem(row) {
+  const key = installedItemKey(row)
+  removingInstalledKey.value = key
+  try {
+    await api.delete('/easytier/runtime', {
+      data: { version: row.version, os: row.os, arch: row.arch },
+    })
+    notifySuccess('已移除', `${row.version} (${row.os}/${row.arch}) 已从本机删除。`)
+    await loadInstalledList()
+    await loadRuntimeInstalled()
+  } catch (e) {
+    const msg = e?.response?.data?.error || e?.message || '移除失败'
+    notifyError('移除失败', msg)
+  } finally {
+    removingInstalledKey.value = ''
+  }
+}
+
 function onVersionOrPlatformChange() {
   if (selectedVersion.value) {
     form.image_tag = selectedVersion.value
@@ -499,8 +650,57 @@ async function save() {
   saving.value = true
   try {
     const { data } = await api.put('/easytier/config', form)
-    notifySuccess('已保存', data?.message || '请重启或刷新 EasyTier 守护进程使配置生效。')
+    notifySuccess('已保存', '若需使网络/高级配置生效，请点击上方状态卡片中的「重启」。')
     await loadConfig()
+  } finally {
+    saving.value = false
+  }
+}
+
+async function saveAndRestart() {
+  const errors = []
+  if (form.enabled) {
+    if (!form.network_name.trim()) errors.push('请填写网络名。')
+    if (!form.network_secret.trim()) errors.push('请填写网络密钥。')
+    if (networkMode.value !== 'standalone' && !form.peers.trim()) errors.push('请至少填写一个初始节点。')
+  }
+  const ipv4 = form.ipv4.trim()
+  if (ipv4) {
+    const ipv4Pattern = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/
+    if (!ipv4Pattern.test(ipv4)) errors.push('本机 IPv4 格式不正确。')
+  }
+  const cidrPattern = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}\/([0-9]|[12][0-9]|3[0-2])$/
+  if (form.proxy_networks.trim()) {
+    const items = form.proxy_networks.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean)
+    const invalid = items.filter((item) => !cidrPattern.test(item))
+    if (invalid.length) errors.push(`子网代理格式不正确：${invalid.join('，')}`)
+  }
+  if (errors.length) {
+    notifyError('配置不完整或格式错误', errors.join('；'))
+    return
+  }
+  if (networkMode.value === 'standalone') form.peers = ''
+  else if (networkMode.value === 'public') form.peers = (publicServer.value || '').trim()
+
+  saving.value = true
+  try {
+    await api.put('/easytier/config', form)
+    await loadConfig()
+    try {
+      const { data } = await api.post('/easytier/daemon/restart')
+      notifySuccess('已保存并重启', data?.message || '配置已保存，EasyTier 守护进程已重启。')
+      await loadDaemonStatus()
+      await loadStatus()
+    } catch (e) {
+      const err = e?.response?.data
+      const msg = err?.error || e?.message || '重启失败'
+      const hint = err?.hint || ''
+      notifyError('配置已保存，但重启失败', hint ? `${msg} ${hint}` : msg)
+      await loadDaemonStatus()
+    }
+  } catch (e) {
+    const msg = e?.response?.data?.error || e?.message || '保存失败'
+    notifyError('保存失败', msg)
   } finally {
     saving.value = false
   }
@@ -537,12 +737,27 @@ async function loadDaemonStatus() {
     daemonStatus.running = !!data?.running
     daemonStatus.pid = data?.pid || 0
     daemonStatus.last_start_error = data?.last_start_error || ''
+    daemonStatus.started_version = data?.started_version || ''
     daemonModeEnabled.value = !!data?.daemon_mode_enabled
   } catch (_) {
     daemonStatus.running = false
     daemonStatus.pid = 0
     daemonStatus.last_start_error = ''
+    daemonStatus.started_version = ''
     daemonModeEnabled.value = false
+  }
+}
+
+async function loadDaemonLogs() {
+  if (!daemonModeEnabled.value) return
+  daemonLogsLoading.value = true
+  try {
+    const { data } = await api.get('/easytier/daemon/logs')
+    daemonLogs.value = data?.logs ?? ''
+  } catch (_) {
+    daemonLogs.value = ''
+  } finally {
+    daemonLogsLoading.value = false
   }
 }
 
@@ -552,7 +767,14 @@ async function startDaemon() {
     notifySuccess('已启动', data?.message || 'EasyTier daemon 已启动。')
     await loadDaemonStatus()
     await loadStatus()
-  } catch (_) {}
+    await loadDaemonLogs()
+  } catch (e) {
+    const err = e?.response?.data
+    const msg = err?.error || e?.message || '启动失败'
+    const hint = err?.hint || ''
+    notifyError(msg, hint || undefined)
+    await loadDaemonStatus()
+  }
 }
 
 async function stopDaemon() {
@@ -561,12 +783,24 @@ async function stopDaemon() {
     notifySuccess('已停止', data?.message || 'EasyTier daemon 已停止。')
     await loadDaemonStatus()
     await loadStatus()
+    await loadDaemonLogs()
   } catch (_) {}
 }
 
 async function restartDaemon() {
-  await stopDaemon()
-  await startDaemon()
+  try {
+    const { data } = await api.post('/easytier/daemon/restart')
+    notifySuccess('已重启', data?.message || 'EasyTier daemon 已重启。')
+    await loadDaemonStatus()
+    await loadStatus()
+    await loadDaemonLogs()
+  } catch (e) {
+    const err = e?.response?.data
+    const msg = err?.error || e?.message || '重启失败'
+    const hint = err?.hint || ''
+    notifyError(msg, hint || undefined)
+    await loadDaemonStatus()
+  }
 }
 
 async function installRuntime() {
@@ -597,6 +831,7 @@ async function installRuntime() {
       notifySuccess('运行时已准备就绪', `已为 ${selectedPlatformKey.value} 安装 EasyTier ${data.version || version}。`)
       runtimeError.value = ''
       await loadRuntimeInstalled()
+      await loadInstalledList()
     }
   } catch (e) {
     const message =
@@ -622,6 +857,7 @@ async function removeRuntime() {
     })
     notifySuccess('已移除', `已移除 ${selectedPlatformKey.value} 的 EasyTier ${version} 运行时。`)
     await loadRuntimeInstalled()
+    await loadInstalledList()
   } catch (e) {
     const message = e?.response?.data?.error || e?.message || '移除失败。'
     runtimeError.value = message
@@ -696,6 +932,7 @@ onMounted(async () => {
     selectedPlatformKey.value = currentPlatformLabel.value || (platformOptions.value[0]?.value ?? null)
   }
   await loadRuntimeInstalled()
+  await loadInstalledList()
 })
 </script>
 
@@ -723,6 +960,13 @@ onMounted(async () => {
   font-size: 13px;
   color: #666;
 }
+.status-hint code {
+  font-family: var(--n-font-mono, monospace);
+  font-size: 12px;
+  padding: 0 4px;
+  background: var(--n-color-target, #f0f0f0);
+  border-radius: 3px;
+}
 .status-updated {
   margin-left: 12px;
   font-size: 12px;
@@ -738,5 +982,17 @@ onMounted(async () => {
   width: 120px;
   font-size: 13px;
   color: #666;
+}
+.daemon-logs {
+  margin: 0;
+  padding: 10px;
+  max-height: 280px;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.4;
+  background: var(--n-color-target, #f5f5f5);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 </style>

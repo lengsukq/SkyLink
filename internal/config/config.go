@@ -18,7 +18,7 @@ func Load(path string) (*App, *Cloudflare, *EasyTier, error) {
 	cf := &Cloudflare{}
 	et := &EasyTier{
 		RPCAddress:    DefaultEasyTierRPC,
-		DaemonEnabled: false,
+		DaemonEnabled: true,
 		DaemonPath:    DefaultEasyTierDaemonPath,
 		RuntimeDir:    DefaultEasyTierRuntimeDir,
 	}
