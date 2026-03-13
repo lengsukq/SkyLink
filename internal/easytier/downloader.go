@@ -127,6 +127,59 @@ func (d *RuntimeDownloader) HasDaemon(version string, platform Platform) bool {
 	return false
 }
 
+// DaemonPath 返回指定版本和平台对应的本地二进制路径（不检查是否存在）
+func (d *RuntimeDownloader) DaemonPath(version string, platform Platform) string {
+	if d == nil {
+		return ""
+	}
+	if platform.OS == "" || platform.Arch == "" {
+		platform = CurrentPlatform()
+	}
+	version = strings.TrimSpace(version)
+	if version == "" {
+		version = "latest"
+	}
+	return d.binaryPath(version, platform)
+}
+
+// RemoveDaemon 移除已下载的指定版本+平台的二进制文件；仅当路径在 runtimeDir 内时执行。
+func (d *RuntimeDownloader) RemoveDaemon(version string, platform Platform) error {
+	if d == nil {
+		return fmt.Errorf("runtime downloader is nil")
+	}
+	if platform.OS == "" || platform.Arch == "" {
+		platform = CurrentPlatform()
+	}
+	version = strings.TrimSpace(version)
+	if version == "" {
+		version = "latest"
+	}
+	targetPath := d.binaryPath(version, platform)
+	absTarget, err := filepath.Abs(targetPath)
+	if err != nil {
+		return err
+	}
+	absDir, err := filepath.Abs(d.runtimeDir)
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(absDir, absTarget)
+	if err != nil {
+		return err
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("path outside runtime dir")
+	}
+	if err := os.Remove(targetPath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	parentDir := filepath.Dir(targetPath)
+	if dirEntries, err := os.ReadDir(parentDir); err == nil && len(dirEntries) == 0 {
+		_ = os.Remove(parentDir)
+	}
+	return nil
+}
+
 func (d *RuntimeDownloader) binaryPath(version string, platform Platform) string {
 	safeVersion := strings.TrimSpace(version)
 	if safeVersion == "" {
@@ -302,5 +355,31 @@ func containsAny(s string, subs []string) bool {
 		}
 	}
 	return false
+}
+
+// PlatformLabel 供 API 返回给前端的平台项（os + arch + label）
+type PlatformLabel struct {
+	OS    string `json:"os"`
+	Arch  string `json:"arch"`
+	Label string `json:"label"`
+}
+
+// supportedPlatforms 与 GitHub EasyTier releases 的 core 资产一致
+var supportedPlatforms = []Platform{
+	{OS: "linux", Arch: "amd64"},
+	{OS: "linux", Arch: "arm64"},
+	{OS: "darwin", Arch: "amd64"},
+	{OS: "darwin", Arch: "arm64"},
+	{OS: "windows", Arch: "amd64"},
+	{OS: "windows", Arch: "arm64"},
+}
+
+// SupportedPlatformsWithLabels 返回支持的平台列表（供版本下拉与下载用）
+func SupportedPlatformsWithLabels() []PlatformLabel {
+	out := make([]PlatformLabel, 0, len(supportedPlatforms))
+	for _, p := range supportedPlatforms {
+		out = append(out, PlatformLabel{OS: p.OS, Arch: p.Arch, Label: p.OS + "/" + p.Arch})
+	}
+	return out
 }
 

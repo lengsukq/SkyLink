@@ -12,21 +12,4 @@ services:
       - SKYLINK_DB_PATH=/data/skylink.db
       # 可选：CF_API_TOKEN、CF_ZONE_ID
     restart: unless-stopped
-    networks:
-      - skylink
-
-  # EasyTier mesh VPN：与 SkyLink 同网段，由 SkyLink UI 配置并写入 ./data/easytier.env
-  easytier:
-    image: easytier/easytier:${EASYTIER_IMAGE_TAG:-latest}
-    env_file:
-      - ./data/easytier.env
-    environment:
-      - ET_RPC_PORTAL=0.0.0.0:15888
-    privileged: true
-    restart: unless-stopped
-    networks:
-      - skylink
-
-networks:
-  skylink:
-    driver: bridge
+    # EasyTier 推荐在宿主机或独立环境中以守护进程模式运行，并通过 SKYLINK_EASYTIER_RPC 与本服务通信。

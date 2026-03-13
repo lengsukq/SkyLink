@@ -2,7 +2,7 @@
   <div>
     <page-header
       title="EasyTier"
-      description="配置并查看 mesh VPN 状态；映射时可选择 mesh 内节点作为后端。配置保存后会写入 data/easytier.env，请重启 EasyTier（容器或守护进程）使配置生效。"
+      description="配置并查看 mesh VPN 状态；映射时可选择 mesh 内节点作为后端。推荐由 SkyLink 直接拉起并管理 EasyTier 守护进程，实现一站式使用。"
     />
 
     <n-card title="状态" class="page-section page-card">
@@ -32,8 +32,8 @@
           </template>
           <template v-else>
             <span class="status-hint">
-              当前未启用 EasyTier 守护进程模式，通常表示你通过 Docker / docker compose 管理 EasyTier 容器。
-              请在下方完成版本与网络配置后，通过容器编排系统启动或重启 EasyTier。
+              当前未启用 EasyTier 守护进程模式。请在配置文件或环境变量中开启 easytier.daemon_enabled，
+              并确保已准备好 easytier-daemon 二进制，重启 SkyLink 后即可在此处控制守护进程。
             </span>
           </template>
         </n-space>
@@ -45,11 +45,13 @@
             EasyTier 当前未启用。请在下方开启“启用”并保存配置，然后使用上方按钮启动 EasyTier 守护进程。
           </span>
           <span v-else>
-            EasyTier 当前未启用。请在下方开启“启用”并保存配置，然后在 Docker / docker compose 中启动或重启 EasyTier 容器。
+            EasyTier 当前未启用。请在下方开启“启用”并保存配置，并确保已在本机启动 EasyTier 守护进程或在配置中开启守护进程模式。
           </span>
         </div>
         <div v-else-if="status.error" class="status-error">
-          EasyTier 已启用，但状态获取失败：{{ status.error }}。请检查 EasyTier 是否正在运行以及 RPC 地址配置是否正确。
+          EasyTier 已启用，但状态获取失败：{{ status.error }}。
+          <span v-if="status.hint" class="status-hint">{{ status.hint }}</span>
+          <span v-else class="status-hint">请检查 EasyTier 守护进程是否正在运行、RPC 地址是否正确，以及 easytier-cli 是否已安装并在 PATH 中。</span>
         </div>
         <div v-else-if="status.ok && !status.peers.length && !status.routes.length" class="status-hint">
           EasyTier 已运行，但当前没有任何 peers 或路由；这通常表示你是第一个节点，或尚未成功加入到目标网络。
@@ -77,31 +79,47 @@
       <n-gi>
         <n-card title="版本与运行时" class="page-card">
           <n-space vertical size="small">
+            <n-form-item label="EasyTier 版本">
+              <n-select
+                v-model:value="selectedVersion"
+                :options="releaseOptions"
+                placeholder="从 GitHub Releases 选择"
+                filterable
+                clearable
+                style="width: 100%"
+                @update:value="onVersionOrPlatformChange"
+              />
+            </n-form-item>
+            <n-form-item label="平台">
+              <n-select
+                v-model:value="selectedPlatformKey"
+                :options="platformOptions"
+                placeholder="选择平台"
+                style="width: 100%"
+                @update:value="onVersionOrPlatformChange"
+              />
+            </n-form-item>
             <n-space align="center">
-              <span class="field-label">EasyTier 版本（镜像 tag）</span>
-              <n-input-group style="flex: 1">
-                <n-input v-model:value="form.image_tag" placeholder="如 v2.2.3 或 latest" />
-                <n-button :loading="versionCheckLoading" @click="checkUpdate">检查更新</n-button>
-              </n-input-group>
-            </n-space>
-            <span v-if="versionCheck.latest_version" class="easytier-version-hint">
-              当前配置: {{ versionCheck.current_version || form.image_tag || '未设置' }}；最新: {{ versionCheck.latest_version }}
-              <a v-if="versionCheck.release_url" :href="versionCheck.release_url" target="_blank" rel="noopener">Release</a>
-              <n-button v-if="versionCheck.update_available" text type="primary" size="tiny" @click="useLatestVersion">使用此版本</n-button>
-            </span>
-            <span class="runtime-hint">
-              当前后端平台: {{ platform.label || '未知' }}
-              <n-button text size="tiny" :loading="runtimeInstalling" @click="installRuntime">
-                下载/更新 EasyTier 运行时
+              <n-button :loading="runtimeInstalling" @click="installRuntime">
+                下载 EasyTier 运行时
               </n-button>
-              <span v-if="runtimeVersion">（已安装: {{ runtimeVersion }}）</span>
-            </span>
-            <span v-if="runtimeError" class="status-error">
-              {{ runtimeError }}
-            </span>
-            <span v-if="platformError" class="status-error">
-              {{ platformError }}
-            </span>
+              <n-button :loading="runtimeRemoving" :disabled="!runtimeInstalled" @click="removeRuntime">
+                移除
+              </n-button>
+            </n-space>
+            <span v-if="runtimeInstalled" class="runtime-hint">已安装：当前所选版本与平台</span>
+            <span v-else-if="selectedVersion && selectedPlatformKey" class="runtime-hint">未安装</span>
+            <span v-if="releasesError" class="status-error">{{ releasesError }}</span>
+            <span v-if="runtimeError" class="status-error">{{ runtimeError }}</span>
+            <span v-if="platformError" class="status-error">{{ platformError }}</span>
+            <n-space align="center" style="margin-top: 8px">
+              <n-button :loading="versionCheckLoading" size="tiny" @click="checkUpdate">检查更新</n-button>
+              <span v-if="versionCheck.latest_version" class="easytier-version-hint">
+                最新: {{ versionCheck.latest_version }}
+                <a v-if="versionCheck.release_url" :href="versionCheck.release_url" target="_blank" rel="noopener">Release</a>
+                <n-button v-if="versionCheck.update_available" text type="primary" size="tiny" @click="useLatestVersion">使用此版本</n-button>
+              </span>
+            </n-space>
           </n-space>
         </n-card>
       </n-gi>
@@ -109,7 +127,7 @@
       <n-gi>
         <n-card title="网络配置" class="page-card">
           <div class="status-hint" style="margin-bottom: 8px">
-            启用后，可通过顶部状态卡片控制 EasyTier 运行，并在本页查看 mesh 状态与 WireGuard 配置。
+            启用后，可通过顶部状态卡片控制 EasyTier 守护进程运行，并在本页查看 mesh 状态与 WireGuard 配置。
           </div>
           <n-form ref="formRef" :model="form" label-placement="left" label-width="120">
             <n-form-item label="网络名">
@@ -239,7 +257,7 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { NCard, NForm, NFormItem, NInput, NInputGroup, NButton, NSpace, NDataTable, NCollapse, NCollapseItem, NSwitch, NRadioGroup, NRadio, NCheckbox, NDivider, NGrid, NGi } from 'naive-ui'
+import { NCard, NForm, NFormItem, NInput, NInputGroup, NButton, NSpace, NDataTable, NCollapse, NCollapseItem, NSwitch, NRadioGroup, NRadio, NCheckbox, NDivider, NGrid, NGi, NSelect } from 'naive-ui'
 import api from '../api/client'
 import { notifySuccess, notifyError } from '../ui/notify'
 import PageHeader from '../components/PageHeader.vue'
@@ -278,6 +296,7 @@ const lastStatusUpdated = ref('')
 const status = reactive({
   ok: false,
   error: '',
+  hint: '',
   version: '',
   self_ipv4: '',
   self_hostname: '',
@@ -299,7 +318,17 @@ const platform = reactive({
   arch: '',
   label: '',
 })
+const releasesList = ref([])
+const releasesError = ref('')
+const platformsList = ref([])
+const currentPlatformLabel = ref('')
+const releaseOptions = ref([])
+const platformOptions = ref([])
+const selectedVersion = ref(null)
+const selectedPlatformKey = ref(null)
 const runtimeInstalling = ref(false)
+const runtimeRemoving = ref(false)
+const runtimeInstalled = ref(false)
 const runtimeVersion = ref('')
 const platformError = ref('')
 const runtimeError = ref('')
@@ -369,6 +398,64 @@ async function loadPlatform() {
   }
 }
 
+async function loadReleases() {
+  releasesError.value = ''
+  try {
+    const { data } = await api.get('/easytier/releases')
+    const list = data?.releases || []
+    releasesList.value = list
+    releaseOptions.value = list.map((r) => ({ label: r.tag_name, value: r.tag_name }))
+  } catch (_) {
+    releasesList.value = []
+    releaseOptions.value = []
+    releasesError.value = '无法拉取 GitHub Releases 列表。'
+  }
+}
+
+async function loadPlatforms() {
+  try {
+    const { data } = await api.get('/easytier/platforms')
+    const list = data?.platforms || []
+    platformsList.value = list
+    currentPlatformLabel.value = data?.current?.label || ''
+    platformOptions.value = list.map((p) => ({ label: p.label, value: p.label }))
+  } catch (_) {
+    platformsList.value = []
+    platformOptions.value = []
+  }
+}
+
+async function loadRuntimeInstalled() {
+  const version = selectedVersion.value || form.image_tag
+  if (!version || !selectedPlatformKey.value) {
+    runtimeInstalled.value = false
+    return
+  }
+  const [osVal, arch] = selectedPlatformKey.value.split('/')
+  if (!osVal || !arch) {
+    runtimeInstalled.value = false
+    return
+  }
+  try {
+    const { data } = await api.get('/easytier/runtime/installed', {
+      params: { version, os: osVal, arch },
+    })
+    runtimeInstalled.value = !!data?.installed
+    if (data?.installed) {
+      runtimeVersion.value = version
+    }
+  } catch (_) {
+    runtimeInstalled.value = false
+  }
+}
+
+function onVersionOrPlatformChange() {
+  if (selectedVersion.value) {
+    form.image_tag = selectedVersion.value
+  }
+  loadRuntimeInstalled()
+}
+
 async function save() {
   const errors = []
   if (form.enabled) {
@@ -412,7 +499,7 @@ async function save() {
   saving.value = true
   try {
     const { data } = await api.put('/easytier/config', form)
-    notifySuccess('已保存', data?.message || '请重启 EasyTier 容器使配置生效。')
+    notifySuccess('已保存', data?.message || '请重启或刷新 EasyTier 守护进程使配置生效。')
     await loadConfig()
   } finally {
     saving.value = false
@@ -421,10 +508,12 @@ async function save() {
 
 async function loadStatus() {
   statusLoading.value = true
+  status.hint = ''
   try {
     const { data } = await api.get('/easytier/status')
     status.ok = data?.ok ?? false
     status.error = data?.error || ''
+    status.hint = data?.hint || ''
     status.version = data?.version || ''
     status.self_ipv4 = data?.self_ipv4 || ''
     status.self_hostname = data?.self_hostname || ''
@@ -433,6 +522,7 @@ async function loadStatus() {
     lastStatusUpdated.value = new Date().toLocaleTimeString()
   } catch (_) {
     status.error = '无法获取 EasyTier 状态，可能未启用或 RPC 地址不可达。'
+    status.hint = '请确认 EasyTier 守护进程已运行、RPC 地址正确，且 easytier-cli 已安装并在 PATH 中。'
     status.peers = []
     status.routes = []
     lastStatusUpdated.value = new Date().toLocaleTimeString()
@@ -480,27 +570,63 @@ async function restartDaemon() {
 }
 
 async function installRuntime() {
+  const version = selectedVersion.value || form.image_tag?.trim()
+  if (!version) {
+    notifyError('请选择版本', '请先从下拉框选择要下载的 EasyTier 版本。')
+    return
+  }
+  if (!selectedPlatformKey.value) {
+    notifyError('请选择平台', '请先从下拉框选择目标平台。')
+    return
+  }
+  const [osVal, arch] = selectedPlatformKey.value.split('/')
+  if (!osVal || !arch) {
+    notifyError('平台格式错误', '请重新选择平台。')
+    return
+  }
   runtimeInstalling.value = true
   runtimeError.value = ''
   try {
-    const body = {}
-    if (form.image_tag && form.image_tag.trim()) {
-      body.version = form.image_tag.trim()
-    }
-    const { data } = await api.post('/easytier/runtime/install', body)
+    const { data } = await api.post('/easytier/runtime/install', {
+      version: version === 'latest' ? (releasesList.value[0]?.tag_name || 'latest') : version,
+      os: osVal,
+      arch,
+    })
     if (data?.installed) {
-      runtimeVersion.value = data.version || ''
-      notifySuccess('运行时已准备就绪', `已为 ${platform.label || '当前平台'} 安装 EasyTier 运行时。`)
+      runtimeVersion.value = data.version || version
+      notifySuccess('运行时已准备就绪', `已为 ${selectedPlatformKey.value} 安装 EasyTier ${data.version || version}。`)
       runtimeError.value = ''
+      await loadRuntimeInstalled()
     }
   } catch (e) {
     const message =
       (e?.response?.data && (e.response.data.error || e.response.data.warning)) ||
       e?.message ||
-      '下载/更新 EasyTier 运行时失败。'
+      '下载 EasyTier 运行时失败。'
     runtimeError.value = `${message} 如当前官方未提供该平台的守护进程，可考虑手动安装并通过 SKYLINK_EASYTIER_DAEMON_PATH 指定路径。`
   } finally {
     runtimeInstalling.value = false
+  }
+}
+
+async function removeRuntime() {
+  const version = selectedVersion.value || form.image_tag?.trim()
+  if (!version || !selectedPlatformKey.value) return
+  const [osVal, arch] = selectedPlatformKey.value.split('/')
+  if (!osVal || !arch) return
+  runtimeRemoving.value = true
+  runtimeError.value = ''
+  try {
+    await api.delete('/easytier/runtime', {
+      data: { version, os: osVal, arch },
+    })
+    notifySuccess('已移除', `已移除 ${selectedPlatformKey.value} 的 EasyTier ${version} 运行时。`)
+    await loadRuntimeInstalled()
+  } catch (e) {
+    const message = e?.response?.data?.error || e?.message || '移除失败。'
+    runtimeError.value = message
+  } finally {
+    runtimeRemoving.value = false
   }
 }
 
@@ -548,14 +674,28 @@ async function checkUpdate() {
 function useLatestVersion() {
   if (versionCheck.latest_version) {
     form.image_tag = versionCheck.latest_version
-    notifySuccess('已填入', '请保存配置并重启 EasyTier 容器以完成升级。')
+    notifySuccess('已填入', '请保存配置并重启 EasyTier 守护进程以完成升级。')
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   loadPlatform()
-  loadConfig()
+  await loadConfig()
   loadStatus()
+  await loadReleases()
+  await loadPlatforms()
+  if (!selectedVersion.value) {
+    if (form.image_tag && releasesList.value.some((r) => r.tag_name === form.image_tag)) {
+      selectedVersion.value = form.image_tag
+    } else if (releasesList.value.length) {
+      selectedVersion.value = releasesList.value[0].tag_name
+      form.image_tag = releasesList.value[0].tag_name
+    }
+  }
+  if (!selectedPlatformKey.value) {
+    selectedPlatformKey.value = currentPlatformLabel.value || (platformOptions.value[0]?.value ?? null)
+  }
+  await loadRuntimeInstalled()
 })
 </script>
 

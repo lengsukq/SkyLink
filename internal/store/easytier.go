@@ -147,7 +147,9 @@ func (s *Store) SetEasyTierConfig(c *EasyTierConfig) error {
 	return nil
 }
 
-// WriteEasyTierEnv 将当前 EasyTier 配置写入 env 文件，供 docker-compose env_file 使用
+// WriteEasyTierEnv 将当前 EasyTier 配置写入 env 文件。
+// 该功能用于在需要时将配置共享给外部进程（例如独立运行的 EasyTier 或容器），
+// 对于由 SkyLink 直接拉起并管理的守护进程模式并非必需。
 func (s *Store) WriteEasyTierEnv(path string, c *EasyTierConfig) error {
 	if path == "" || c == nil {
 		return nil

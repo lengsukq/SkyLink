@@ -9,4 +9,6 @@ const (
 	DefaultImageTag = "v2.2.3"
 	// GitHubReleasesAPI 用于检查最新版本
 	GitHubReleasesAPI = "https://api.github.com/repos/EasyTier/EasyTier/releases/latest"
+	// GitHubReleasesListAPI 用于拉取 releases 列表（版本下拉）
+	GitHubReleasesListAPI = "https://api.github.com/repos/EasyTier/EasyTier/releases"
 )

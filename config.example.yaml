@@ -8,9 +8,18 @@ cloudflare:
   api_token: ""
   zone_id: ""
 
-# EasyTier 可选；推荐在 Web UI 的「EasyTier」页中完成网络/版本等配置，写入 data/easytier.env 后由 docker compose 通过 env_file 加载。
-# 下面仅配置 SkyLink 自身如何连接 EasyTier 以及 env 文件路径。
+# EasyTier 可选；推荐使用“裸机 + 守护进程模式”，由 SkyLink 直接拉起并管理 EasyTier 守护进程。
+# 网络名 / 密钥 / peers / 版本等建议在 Web UI 的「EasyTier」页中配置并保存。
 easytier:
-  rpc_address: "easytier:15888"
-  enabled: false
-  env_file_path: ""
+  # SkyLink 连接 EasyTier 的 RPC 地址，默认为本机守护进程监听的 15888 端口。
+  rpc_address: "127.0.0.1:15888"
+  # 是否启用 EasyTier 功能（启用后可在 Web UI 中查看状态、配置网络与 WireGuard）。
+  enabled: true
+  # 是否由 SkyLink 直接拉起并管理 EasyTier 守护进程（推荐）。
+  daemon_enabled: true
+  # EasyTier 守护进程二进制路径；留空则从 PATH 中查找或由 RuntimeDownloader 自动下载。
+  daemon_path: ""
+  # 自动下载的 EasyTier 守护进程缓存目录；通常保持默认即可。
+  runtime_dir: "./data/easytier-bin"
+  # 可选：当需要与外部进程（如独立运行的 EasyTier 或容器）共享配置时，写入 env 文件的路径。
+  # env_file_path: "./data/easytier.env"

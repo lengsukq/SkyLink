@@ -34,7 +34,7 @@ func (s *Server) getEasyTierConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, cfg)
 }
 
-// putEasyTierConfig 保存 EasyTier 配置并写入 env 文件
+// putEasyTierConfig 保存 EasyTier 配置，并在需要时写入 env 文件供外部进程使用
 func (s *Server) putEasyTierConfig(c *gin.Context) {
 	var cfg store.EasyTierConfig
 	if err := c.ShouldBindJSON(&cfg); err != nil {
@@ -62,7 +62,7 @@ func (s *Server) putEasyTierConfig(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "配置已保存。若已修改版本或网络参数，请重启 EasyTier 容器使配置生效。",
+		"message": "配置已保存。若已修改版本或网络参数，请重启或刷新 EasyTier 守护进程使配置生效。",
 	})
 }
 
@@ -80,9 +80,11 @@ func (s *Server) getEasyTierStatus(c *gin.Context) {
 	client := easytier.NewClient("", rpc)
 	st, err := client.Status()
 	if err != nil {
+		// 将底层错误透出，同时给出更友好的排查提示
 		c.JSON(http.StatusOK, gin.H{
 			"ok":    false,
 			"error": err.Error(),
+			"hint":  "请确认 EasyTier 守护进程已运行，RPC 地址可达，并且 easytier-cli 已安装且在 SKYLINK 进程可见的 PATH 中。",
 			"peers": []interface{}{},
 			"routes": []interface{}{},
 		})
@@ -101,7 +103,11 @@ func (s *Server) getEasyTierVersion(c *gin.Context) {
 	client := easytier.NewClient("", rpc)
 	v, err := client.Version()
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"version": "", "error": err.Error()})
+		c.JSON(http.StatusOK, gin.H{
+			"version": "",
+			"error":   err.Error(),
+			"hint":    "请确认 EasyTier 守护进程已运行，RPC 地址可达，并且 easytier-cli 已安装且在 SKYLINK 进程可见的 PATH 中。",
+		})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"version": v})
@@ -158,6 +164,7 @@ func (s *Server) getEasyTierVPNPortal(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"config": "",
 			"error":  err.Error(),
+			"hint":   "请确认已在 EasyTier 中启用 VPN Portal，守护进程已运行，并且 easytier-cli 已安装且在 SKYLINK 进程可见的 PATH 中。",
 		})
 		return
 	}
@@ -258,7 +265,50 @@ func (s *Server) getEasyTierPlatform(c *gin.Context) {
 	})
 }
 
-// postEasyTierRuntimeInstall 为当前平台和配置版本下载/准备 easytier-daemon 运行时
+// getEasyTierReleases 返回 GitHub EasyTier releases 列表，供版本下拉使用
+func (s *Server) getEasyTierReleases(c *gin.Context) {
+	list, err := easytier.FetchReleases(30)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{"releases": []easytier.Release{}, "error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"releases": list})
+}
+
+// getEasyTierPlatforms 返回支持的平台列表及当前平台，供平台下拉与默认值使用
+func (s *Server) getEasyTierPlatforms(c *gin.Context) {
+	platforms := easytier.SupportedPlatformsWithLabels()
+	current := easytier.CurrentPlatform()
+	currentLabel := current.OS + "/" + current.Arch
+	c.JSON(http.StatusOK, gin.H{
+		"platforms": platforms,
+		"current":   gin.H{"os": current.OS, "arch": current.Arch, "label": currentLabel},
+	})
+}
+
+// getEasyTierRuntimeInstalled 查询指定版本+平台是否已安装，返回 installed 与 path
+func (s *Server) getEasyTierRuntimeInstalled(c *gin.Context) {
+	version := strings.TrimSpace(c.Query("version"))
+	osVal := strings.TrimSpace(c.Query("os"))
+	arch := strings.TrimSpace(c.Query("arch"))
+	if version == "" || osVal == "" || arch == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "version, os, arch required"})
+		return
+	}
+	if s.easyTierRuntime == nil {
+		c.JSON(http.StatusOK, gin.H{"installed": false, "path": ""})
+		return
+	}
+	platform := easytier.Platform{OS: osVal, Arch: arch}
+	installed := s.easyTierRuntime.HasDaemon(version, platform)
+	path := ""
+	if installed {
+		path = s.easyTierRuntime.DaemonPath(version, platform)
+	}
+	c.JSON(http.StatusOK, gin.H{"installed": installed, "path": path})
+}
+
+// postEasyTierRuntimeInstall 为指定或当前平台下载 easytier-daemon 运行时；body 可选 os、arch
 func (s *Server) postEasyTierRuntimeInstall(c *gin.Context) {
 	if s.easyTierRuntime == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "runtime downloader is not configured"})
@@ -266,6 +316,8 @@ func (s *Server) postEasyTierRuntimeInstall(c *gin.Context) {
 	}
 	var body struct {
 		Version string `json:"version"`
+		OS      string `json:"os"`
+		Arch    string `json:"arch"`
 	}
 	_ = c.ShouldBindJSON(&body)
 
@@ -279,10 +331,15 @@ func (s *Server) postEasyTierRuntimeInstall(c *gin.Context) {
 		}
 	}
 
+	platform := easytier.CurrentPlatform()
+	if body.OS != "" && body.Arch != "" {
+		platform = easytier.Platform{OS: strings.TrimSpace(body.OS), Arch: strings.TrimSpace(body.Arch)}
+	}
+
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
 	defer cancel()
 
-	path, err := s.easyTierRuntime.EnsureDaemon(ctx, version, easytier.CurrentPlatform())
+	path, err := s.easyTierRuntime.EnsureDaemon(ctx, version, platform)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"installed":   false,
@@ -298,4 +355,34 @@ func (s *Server) postEasyTierRuntimeInstall(c *gin.Context) {
 		"version":     version,
 		"binary_path": path,
 	})
+}
+
+// deleteEasyTierRuntime 移除已下载的指定版本+平台运行时
+func (s *Server) deleteEasyTierRuntime(c *gin.Context) {
+	if s.easyTierRuntime == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "runtime downloader is not configured"})
+		return
+	}
+	var body struct {
+		Version string `json:"version"`
+		OS      string `json:"os"`
+		Arch    string `json:"arch"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+	version := strings.TrimSpace(body.Version)
+	osVal := strings.TrimSpace(body.OS)
+	arch := strings.TrimSpace(body.Arch)
+	if version == "" || osVal == "" || arch == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "version, os, arch required"})
+		return
+	}
+	platform := easytier.Platform{OS: osVal, Arch: arch}
+	if err := s.easyTierRuntime.RemoveDaemon(version, platform); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "removed"})
 }
