@@ -200,9 +200,16 @@
                   v-model:value="form.ipv4"
                   class="ipv4-input"
                   placeholder="如 10.0.111.99（mesh 内 IP）"
+                  :disabled="form.dhcp"
+                  @update:value="onIPv4Change"
                 />
                 <span class="cidr-suffix">/24</span>
-                <n-checkbox v-model:checked="form.dhcp">DHCP</n-checkbox>
+                <n-checkbox
+                  v-model:checked="form.dhcp"
+                  @update:checked="onDHCPChange"
+                >
+                  DHCP
+                </n-checkbox>
               </n-space>
             </n-form-item>
             <n-form-item label="网络方式">
@@ -513,6 +520,20 @@ const installedListColumns = [
     },
   },
 ]
+
+function onDHCPChange(val) {
+  form.dhcp = val
+  if (val) {
+    form.ipv4 = ''
+  }
+}
+
+function onIPv4Change(val) {
+  form.ipv4 = val
+  if (val && form.dhcp) {
+    form.dhcp = false
+  }
+}
 
 async function loadConfig() {
   try {

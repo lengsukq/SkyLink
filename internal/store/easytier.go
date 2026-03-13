@@ -97,6 +97,10 @@ func (s *Store) SetEasyTierConfig(c *EasyTierConfig) error {
 	if c == nil {
 		return nil
 	}
+	// 若启用 DHCP，则不再保留静态 IPv4，避免与 ET_DHCP 同时生效产生歧义
+	if c.DHCP {
+		c.IPv4 = ""
+	}
 	if err := s.SetSetting(KeyETNetworkName, c.NetworkName); err != nil {
 		return err
 	}
