@@ -23,6 +23,7 @@ const (
 	KeyETProxyNetworks  = "et.proxy_networks"
 	KeyETDHCP           = "et.dhcp"
 	KeyETVPNPortal      = "et.vpn_portal"
+	KeyETAutostart      = "et.autostart_on_startup"
 )
 
 // EasyTierConfig 供 API 和 env 文件使用的配置结构
@@ -149,6 +150,27 @@ func (s *Store) SetEasyTierConfig(c *EasyTierConfig) error {
 		return err
 	}
 	return nil
+}
+
+// GetEasyTierAutostart 读取 EasyTier 是否在 SkyLink 启动时自动启动的开关（默认关闭）
+func (s *Store) GetEasyTierAutostart() (bool, error) {
+	v, err := s.GetSetting(KeyETAutostart)
+	if err != nil {
+		return false, err
+	}
+	if v == "" {
+		return false, nil
+	}
+	return v == "1" || v == "true", nil
+}
+
+// SetEasyTierAutostart 写入 EasyTier 自动启动开关
+func (s *Store) SetEasyTierAutostart(enabled bool) error {
+	value := "0"
+	if enabled {
+		value = "1"
+	}
+	return s.SetSetting(KeyETAutostart, value)
 }
 
 // WriteEasyTierEnv 将当前 EasyTier 配置写入 env 文件。

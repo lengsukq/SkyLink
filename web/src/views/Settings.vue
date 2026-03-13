@@ -43,6 +43,23 @@
           </p>
         </n-card>
       </n-gi>
+
+      <n-gi>
+        <n-card title="EasyTier" class="page-card">
+          <n-form label-placement="left" label-width="180">
+            <n-form-item label="SkyLink 启动时自动启动 EasyTier">
+              <n-switch
+                :value="easytierAutostart"
+                :loading="easytierAutostartSaving"
+                @update:value="onToggleEasyTierAutostart"
+              />
+            </n-form-item>
+          </n-form>
+          <p class="settings-hint">
+            需已在 EasyTier 页面完成网络名、网络密钥和初始节点（peers）配置并开启「启用」。该开关仅控制 SkyLink 进程启动时是否自动拉起 EasyTier 守护进程，页面上的「启动 / 重启」按钮行为不受影响。
+          </p>
+        </n-card>
+      </n-gi>
     </n-grid>
 
     <n-card title="Cloudflare 账号管理" class="page-section page-card">
@@ -81,6 +98,9 @@ const pwForm = reactive({ old_password: '', new_password: '' })
 
 const defaultsSaving = ref(false)
 const defaultsForm = reactive({ frp_cname_target: '', cf_cname_proxied: true })
+
+const easytierAutostart = ref(false)
+const easytierAutostartSaving = ref(false)
 
 const accountsLoading = ref(false)
 const accounts = ref([])
@@ -151,6 +171,11 @@ async function loadDefaults() {
   defaultsForm.cf_cname_proxied = !!data?.cf_cname_proxied
 }
 
+async function loadEasyTierSettings() {
+  const { data } = await api.get('/easytier/settings')
+  easytierAutostart.value = !!data?.autostart_on_startup
+}
+
 async function loadAccounts() {
   accountsLoading.value = true
   try {
@@ -193,8 +218,25 @@ async function saveDefaults() {
   }
 }
 
+async function onToggleEasyTierAutostart(val) {
+  const previous = easytierAutostart.value
+  easytierAutostart.value = val
+  easytierAutostartSaving.value = true
+  try {
+    await api.put('/easytier/settings', {
+      autostart_on_startup: !!val,
+    })
+    notifySuccess('已更新', 'EasyTier 自动启动开关已更新')
+  } catch (e) {
+    // 若后端校验失败或保存异常，回滚到之前的值；具体错误提示由全局拦截器处理
+    easytierAutostart.value = previous
+  } finally {
+    easytierAutostartSaving.value = false
+  }
+}
+
 onMounted(async () => {
-  await Promise.all([loadDefaults(), loadAccounts()])
+  await Promise.all([loadDefaults(), loadEasyTierSettings(), loadAccounts()])
 })
 </script>
 

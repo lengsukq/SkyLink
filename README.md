@@ -76,6 +76,10 @@ docker run -d \
   -v "$(pwd)/data:/data" \
   -e SKYLINK_DB_PATH=/data/skylink.db \
   queensu/skylink:latest
+
+# 如需在容器内启用 EasyTier 守护进程并创建 TUN 设备，请额外添加：
+#   --cap-add=NET_ADMIN --device /dev/net/tun
+# 详情见下文「Docker 中启用 EasyTier 的额外权限」一节。
 ```
 
 ### 方式 B：docker compose
@@ -208,6 +212,16 @@ easytier:
 
 - 修改配置或版本后，需重启 EasyTier 守护进程使配置生效（可在 EasyTier 页通过按钮完成）。
 - 升级版本：在 EasyTier 页选择新版本并保存，然后重启守护进程。
+
+### SkyLink 启动时自动启动 EasyTier（可选）
+
+- 在管理界面 `设置 → EasyTier` 卡片中，可开启「SkyLink 启动时自动启动 EasyTier」开关（默认关闭）。
+- 开启该开关前，需要先在 EasyTier 页面完成以下配置并启用：
+  - 勾选「启用」；
+  - 填写网络名与网络密钥；
+  - 填写至少一个初始节点（peers），即非独立模式下的入口节点地址。
+- 开关开启后，SkyLink 进程每次启动时会在 `easytier.enabled`、`easytier.daemon_enabled` 为真且上述配置完整的前提下，通过内置的 EasyTier 守护进程管理器自动拉起 EasyTier。
+- 自动启动仅影响 **SkyLink 进程启动时** 的行为；EasyTier 页顶部的「启动 / 停止 / 重启」按钮仍可随时手动控制守护进程。
 
 ### 故障排查（EasyTier）
 

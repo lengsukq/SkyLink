@@ -160,6 +160,8 @@ func (s *Server) Handler() http.Handler {
 	// EasyTier
 	r.GET("/api/easytier/config", s.getEasyTierConfig)
 	r.PUT("/api/easytier/config", s.putEasyTierConfig)
+	r.GET("/api/easytier/settings", s.getEasyTierSettings)
+	r.PUT("/api/easytier/settings", s.updateEasyTierSettings)
 	r.GET("/api/easytier/status", s.getEasyTierStatus)
 	r.GET("/api/easytier/version", s.getEasyTierVersion)
 	r.GET("/api/easytier/version/check", s.getEasyTierVersionCheck)
@@ -418,6 +420,14 @@ func (s *Server) StopEasyTierDaemon() {
 
 func (s *Server) maybeStartEasyTierDaemon() {
 	if s.easyTierDaemon == nil || s.easyTierCfg == nil || !s.easyTierCfg.DaemonEnabled {
+		return
+	}
+	autostart, err := s.store.GetEasyTierAutostart()
+	if err != nil {
+		log.Printf("load EasyTier autostart setting failed: %v", err)
+		return
+	}
+	if !autostart {
 		return
 	}
 	cfg, err := s.store.GetEasyTierConfig()
