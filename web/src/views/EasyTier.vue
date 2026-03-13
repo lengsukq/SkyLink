@@ -53,12 +53,6 @@
           </span>
           <n-button
             size="tiny"
-            :disabled="!daemonModeEnabled"
-            :title="daemonModeEnabled ? '' : '需在配置中开启 easytier.daemon_enabled 并重启 SkyLink'"
-            @click="startDaemon"
-          >启动</n-button>
-          <n-button
-            size="tiny"
             :disabled="!daemonModeEnabled || !daemonStatus.running"
             :title="!daemonModeEnabled ? '需在配置中开启 easytier.daemon_enabled 并重启 SkyLink' : (!daemonStatus.running ? '守护进程未运行' : '')"
             @click="stopDaemon"
@@ -66,9 +60,9 @@
           <n-button
             size="tiny"
             :disabled="!daemonModeEnabled"
-            :title="daemonModeEnabled ? '' : '需在配置中开启 easytier.daemon_enabled 并重启 SkyLink'"
-            @click="restartDaemon"
-          >重启</n-button>
+            :title="daemonModeEnabled ? (daemonStatus.running ? '重启 EasyTier 守护进程' : '启动 EasyTier 守护进程') : '需在配置中开启 easytier.daemon_enabled 并重启 SkyLink'"
+            @click="startOrRestartDaemon"
+          >{{ daemonStatus.running ? '重启' : '启动' }}</n-button>
           <n-button
             size="tiny"
             :loading="releasePortLoading"
@@ -868,6 +862,14 @@ async function restartDaemon() {
     const hint = err?.hint || ''
     notifyError(msg, hint || undefined)
     await loadDaemonStatus()
+  }
+}
+
+function startOrRestartDaemon() {
+  if (daemonStatus.running) {
+    restartDaemon()
+  } else {
+    startDaemon()
   }
 }
 

@@ -35,6 +35,16 @@ go run ./cmd/server
 make dev
 ```
 
+> 如需在本地开发环境中启用 **EasyTier 守护进程（创建 TUN 虚拟网卡）**，运行 SkyLink 的进程需要具备相应权限。最简单的方式是在开发时使用：
+>
+> ```bash
+> sudo -E make dev
+> # 或
+> sudo -E go run ./cmd/server
+> ```
+>
+> 仅使用反向代理 / Cloudflare / DDNS 功能时则不需要提升权限。
+
 若已安装 Air，也可直接运行 `air`。如需指定配置文件，在 `.air.toml` 中把 `full_bin` 改为 `"./tmp/main -config config.yaml"`。
 
 ### 前端（可选，开发时热更新）
@@ -161,7 +171,11 @@ easytier:
    - `easytier.enabled = true`
    - `easytier.daemon_enabled = true`
    - `easytier.rpc_address = "127.0.0.1:15888"`
-3. 启动 SkyLink：`go run ./cmd/server -config config.yaml`（或使用已编译二进制）。
+3. 启动 SkyLink：如需由 SkyLink 直接拉起 EasyTier 守护进程并在本机创建 TUN 虚拟网卡，建议以 sudo 运行，例如：
+
+   ```bash
+   sudo -E go run ./cmd/server -config config.yaml
+   ```
 4. 打开管理界面 → **EasyTier** 页，在「网络配置」卡片中：
    - 填写 **网络名**、**网络密钥**、**初始节点（peers）**。这些字段分别对应 EasyTier 的 `network_identity.name`、`network_identity.secret` 与 `peers[].uri`，会写入 `ET_NETWORK_NAME`、`ET_NETWORK_SECRET`、`ET_PEERS`。
    - 根据需要设置主机名（`hostname`）、公网发现节点（`external-node`）、子网代理（`proxy-networks`）、是否开启 DHCP 以及 VPN Portal。
@@ -178,8 +192,10 @@ easytier:
   - `hostname` → `ET_HOSTNAME`：节点主机名（可选）。
   - `external-node` → `ET_EXTERNAL_NODE`：公网发现节点地址，如 `tcp://public.easytier.cn:11010`，仅用于协助发现公网节点，非必填。
   - `proxy-networks` → `ET_PROXY_NETWORKS`：子网代理 CIDR 列表，如 `10.0.0.0/24`，可用逗号或换行分隔多个，对应 EasyTier `vpn_portal_config.proxy_networks`。
-  - `dhcp` → `ET_DHCP=1`：启用后 IPv4 可留空，由 EasyTier 自动分配。
+  - `dhcp` → `ET_DHCP=true|false`：启用后 IPv4 可留空，由 EasyTier 自动分配。
   - `vpn_portal` → `ET_VPN_PORTAL`：VPN Portal（WireGuard）配置地址，如 `wg://0.0.0.0:11013/10.14.14.0/24`。
+
+> 注意：**`虚拟 IPv4 地址（ET_IPV4）` 与 `DHCP（ET_DHCP）` 互斥**。启用 DHCP 时 SkyLink 会清空并禁用 IPv4 输入；保存配置时后端也会丢弃静态 IPv4，避免二者同时存在造成歧义或冲突。
 
 ### WireGuard / VPN Portal
 
@@ -203,6 +219,10 @@ easytier:
 - **WireGuard 配置为空或获取失败**：
   - 确认在 EasyTier 高级配置中已填入正确的 `VPN Portal（WireGuard）` 地址，并已重启守护进程。
   - 确认 EasyTier 已成功加入目标网络（状态页上应有 peers / 路由）。
+- **守护进程日志出现 `tun error Operation not permitted` / `Operation not permitted (os error 1)`**：
+  - 这是 **TUN 虚拟网卡权限不足** 导致，端口监听可能正常，但创建/打开 TUN 会失败并退出。
+  - 裸机/源码运行时：需要用更高权限运行拉起 EasyTier 的进程（例如开发环境下用 `sudo -E make dev` 或 `sudo -E go run ./cmd/server ...`）。
+  - Docker/容器运行 EasyTier 时：需要授予容器创建 TUN 的权限（Linux 常见做法为 `--cap-add=NET_ADMIN --device /dev/net/tun`），否则同样会报该错误。
 
 ### 裸机 + 一站式 EasyTier（Daemon 模式）
 
@@ -240,7 +260,8 @@ easytier:
 3. 启动 SkyLink（裸机）：
 
 ```bash
-go run ./cmd/server -config config.yaml
+# 仅当需要由 SkyLink 直接拉起 EasyTier 守护进程、并在本机创建 TUN 虚拟网卡时，建议以 sudo 运行：
+sudo -E go run ./cmd/server -config config.yaml
 ```
 
 4. 在管理界面 **EasyTier** 页：
@@ -252,6 +273,45 @@ go run ./cmd/server -config config.yaml
    - 额外看到 Daemon 状态（运行中 / 未运行 / 上次启动错误），并可一键「启动 / 停止 / 重启」 EasyTier 守护进程。
 
 > 提示：Daemon 模式是源码运行和裸机部署场景下的推荐方式；即便在其他场景中，也始终可以通过 `SKYLINK_EASYTIER_DAEMON_PATH` 显式覆盖自动下载的二进制路径。
+
+### Docker 中启用 EasyTier 的额外权限（示例）
+
+若通过 Docker 运行 SkyLink 并启用 EasyTier 守护进程，需要为容器授予创建 TUN 设备的权限，否则会在日志中看到 `tun error Operation not permitted`：
+
+- `docker run` 示例（仅示意 EasyTier 相关权限，端口与卷请按实际调整）：
+
+```bash
+docker run -d \
+  --name skylink \
+  --restart unless-stopped \
+  -p 18080:18080 \
+  -p 19080:19080 \
+  -v "$(pwd)/data:/data" \
+  -e SKYLINK_DB_PATH=/data/skylink.db \
+  --cap-add=NET_ADMIN \
+  --device /dev/net/tun \
+  queensu/skylink:latest
+```
+
+- `docker-compose.yml` 片段：
+
+```yaml
+services:
+  skylink:
+    image: queensu/skylink:latest
+    ports:
+      - "18080:18080"
+      - "19080:19080"
+    volumes:
+      - ./data:/data
+    environment:
+      - SKYLINK_DB_PATH=/data/skylink.db
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    restart: unless-stopped
+```
 
 ## GitHub Actions（Docker 镜像与 Release）
 
