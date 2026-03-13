@@ -14,6 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/skylink/skylink/internal/cloudflare"
+	"github.com/skylink/skylink/internal/ddns"
 	"github.com/skylink/skylink/internal/proxy"
 	"github.com/skylink/skylink/internal/security"
 	"github.com/skylink/skylink/internal/store"
@@ -34,6 +35,8 @@ type Server struct {
 	cfClients          map[int64]*cloudflare.Client
 	cfClientsMu        sync.Mutex
 	currentCFAccountID atomic.Value // int64, 0 means unset
+
+	ddnsUpdater *ddns.Updater
 }
 
 // New 创建 API 服务；staticFS 可为 nil（不提供 GUI 时）
@@ -67,12 +70,13 @@ func New(st *store.Store, pr *proxy.Proxy, cf *cloudflare.Client, staticFS fs.FS
 	// Try to initialize current CF account ID from settings if present.
 	if v, err := st.GetSetting("cf.current_account_id"); err != nil {
 		log.Printf("load current CF account id failed: %v", err)
-	} else if v != "" {
+	} else 	if v != "" {
 		if id, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil && id > 0 {
 			s.currentCFAccountID.Store(id)
 		}
 	}
 
+	s.startDDNSUpdater()
 	return s
 }
 
@@ -274,4 +278,81 @@ func (s *Server) setCurrentCFAccountID(id int64) error {
 	defer s.cfClientsMu.Unlock()
 	s.cfClients = make(map[int64]*cloudflare.Client)
 	return nil
+}
+
+// getCFClientByAccountID 根据 CF 账号 ID 返回或创建对应的 Cloudflare 客户端（供 DDNS 等按账号更新使用）
+func (s *Server) getCFClientByAccountID(accountID int64) (*cloudflare.Client, error) {
+	if accountID <= 0 {
+		return nil, errors.New("invalid cloudflare account id")
+	}
+	s.cfClientsMu.Lock()
+	defer s.cfClientsMu.Unlock()
+	if s.cfClients == nil {
+		s.cfClients = make(map[int64]*cloudflare.Client)
+	}
+	if client, ok := s.cfClients[accountID]; ok {
+		return client, nil
+	}
+	acc, err := s.store.GetCFAccount(accountID)
+	if err != nil {
+		return nil, err
+	}
+	if acc == nil || strings.TrimSpace(acc.APIToken) == "" {
+		return nil, errors.New("cloudflare account not found or token empty")
+	}
+	client := cloudflare.New(strings.TrimSpace(acc.APIToken))
+	s.cfClients[accountID] = client
+	return client, nil
+}
+
+func (s *Server) startDDNSUpdater() {
+	s.ddnsUpdater = ddns.NewUpdater(
+		func(item ddns.DDNSItem, newIP string) error {
+			cfClient, err := s.getCFClientByAccountID(item.CFAccountID)
+			if err != nil {
+				log.Printf("ddns: skip config id=%d account=%d: %v", item.ID, item.CFAccountID, err)
+				return err
+			}
+			recordType := item.RecordType
+			if recordType != ddns.RecordTypeAAAA {
+				recordType = ddns.RecordTypeA
+			}
+			_, err = cfClient.UpdateDNSRecord(item.ZoneID, item.RecordID, recordType, item.RecordName, newIP, cloudflare.TTLAuto, false)
+			if err != nil {
+				return err
+			}
+			return s.store.UpdateDDNSLastResult(item.ID, newIP)
+		},
+		func() ([]ddns.DDNSItem, error) {
+			list, err := s.store.ListEnabledDDNSConfigs(0)
+			if err != nil {
+				return nil, err
+			}
+			out := make([]ddns.DDNSItem, len(list))
+			for i := range list {
+				rt := list[i].RecordType
+				if rt != ddns.RecordTypeAAAA {
+					rt = ddns.RecordTypeA
+				}
+				out[i] = ddns.DDNSItem{
+					ID:          list[i].ID,
+					CFAccountID: list[i].CFAccountID,
+					ZoneID:      list[i].ZoneID,
+					RecordName:  list[i].RecordName,
+					RecordID:    list[i].RecordID,
+					RecordType:  rt,
+					IntervalMin: list[i].IntervalMin,
+				}
+			}
+			return out, nil
+		},
+	)
+	s.ddnsUpdater.Start()
+}
+
+// StopDDNS 停止 DDNS 后台更新（进程退出时由 main 调用）
+func (s *Server) StopDDNS() {
+	if s.ddnsUpdater != nil {
+		s.ddnsUpdater.Stop()
+	}
 }

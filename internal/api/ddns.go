@@ -38,6 +38,7 @@ func (s *Server) addDDNS(c *gin.Context) {
 		ZoneID      string `json:"zone_id"`
 		RecordName  string `json:"record_name"`
 		RecordID    string `json:"record_id"`
+		RecordType  string `json:"record_type"` // "A" 或 "AAAA"，默认 A
 		IntervalMin int    `json:"interval_min"`
 		Enabled     bool   `json:"enabled"`
 	}
@@ -49,6 +50,9 @@ func (s *Server) addDDNS(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "zone_id, record_name, record_id required"})
 		return
 	}
+	if req.RecordType != "AAAA" {
+		req.RecordType = "A"
+	}
 	// 需要当前 CF 账号上下文，以便将配置绑定到对应账号
 	if _, err := s.cfClientForCurrentAccount(); err != nil {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
@@ -57,7 +61,7 @@ func (s *Server) addDDNS(c *gin.Context) {
 	idVal := s.currentCFAccountID.Load()
 	cfAccountID, _ := idVal.(int64)
 	req.IntervalMin = normalizeDDNSIntervalMin(req.IntervalMin)
-	_, err := s.store.AddDDNSConfig(cfAccountID, req.ZoneID, req.RecordName, req.RecordID, req.IntervalMin, req.Enabled)
+	_, err := s.store.AddDDNSConfig(cfAccountID, req.ZoneID, req.RecordName, req.RecordID, req.RecordType, req.IntervalMin, req.Enabled)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -103,10 +107,15 @@ func (s *Server) deleteDDNS(c *gin.Context) {
 func (s *Server) getPublicIP(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
-	ip, err := ddns.GetPublicIP(ctx)
-	if err != nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+	ipv4, err4 := ddns.GetPublicIPv4(ctx)
+	ipv6, _ := ddns.GetPublicIPv6(ctx)
+	if err4 != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err4.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"ip": ip})
+	c.JSON(http.StatusOK, gin.H{
+		"ip":   ipv4,
+		"ipv4": ipv4,
+		"ipv6": ipv6,
+	})
 }

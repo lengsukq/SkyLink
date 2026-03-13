@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -41,11 +42,12 @@ CREATE TABLE IF NOT EXISTS ddns_config (
 	zone_id TEXT NOT NULL,
 	record_name TEXT NOT NULL,
 	record_id TEXT NOT NULL,
+	record_type TEXT NOT NULL DEFAULT 'A',
 	interval_min INTEGER NOT NULL DEFAULT 10,
 	enabled INTEGER NOT NULL DEFAULT 1,
 	last_ip TEXT,
 	updated_at INTEGER NOT NULL,
-	UNIQUE(zone_id, record_name)
+	UNIQUE(zone_id, record_name, record_type)
 );
 
 CREATE INDEX IF NOT EXISTS idx_mappings_host ON mappings(host);
@@ -70,7 +72,24 @@ func New(dbPath string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("schema: %w", err)
 	}
+	if err := migrateDDNSRecordType(db); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return &Store{db: db}, nil
+}
+
+// migrateDDNSRecordType 为 ddns_config 表添加 record_type 列（已有则跳过）
+func migrateDDNSRecordType(db *sql.DB) error {
+	_, err := db.Exec("SELECT record_type FROM ddns_config LIMIT 1")
+	if err == nil {
+		return nil
+	}
+	if strings.Contains(err.Error(), "record_type") || strings.Contains(err.Error(), "no such column") {
+		_, err = db.Exec("ALTER TABLE ddns_config ADD COLUMN record_type TEXT NOT NULL DEFAULT 'A'")
+		return err
+	}
+	return err
 }
 
 // Close 关闭数据库

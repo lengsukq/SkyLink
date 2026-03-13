@@ -8,13 +8,14 @@ type Mapping struct {
 	CreatedAt int64  `json:"created_at"`
 }
 
-// DDNSConfig DDNS 配置：定时更新某条 A 记录为当前公网 IP
+// DDNSConfig DDNS 配置：定时将公网 IP 更新到指定 CF A/AAAA 记录
 type DDNSConfig struct {
 	ID          int64  `json:"id"`
 	CFAccountID int64  `json:"cf_account_id"`
 	ZoneID      string `json:"zone_id"`
 	RecordName  string `json:"record_name"`  // 如 @ 或 sub
-	RecordID    string `json:"record_id"`   // CF 记录 ID，更新时用
+	RecordID    string `json:"record_id"`    // CF 记录 ID，更新时用
+	RecordType  string `json:"record_type"` // "A" 或 "AAAA"
 	IntervalMin int    `json:"interval_min"` // 更新间隔（分钟）
 	Enabled     bool   `json:"enabled"`
 	LastIP      string `json:"last_ip"`

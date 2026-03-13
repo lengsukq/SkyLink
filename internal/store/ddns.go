@@ -7,7 +7,7 @@ import (
 
 // ListDDNSConfigs 返回指定 CF 账号下的所有 DDNS 配置；cfAccountID 为 0 时返回所有
 func (s *Store) ListDDNSConfigs(cfAccountID int64) ([]DDNSConfig, error) {
-	query := `SELECT id, cf_account_id, zone_id, record_name, record_id, interval_min, enabled, last_ip, updated_at FROM ddns_config`
+	query := `SELECT id, cf_account_id, zone_id, record_name, record_id, record_type, interval_min, enabled, last_ip, updated_at FROM ddns_config`
 	var rows *sql.Rows
 	var err error
 	if cfAccountID > 0 {
@@ -25,8 +25,11 @@ func (s *Store) ListDDNSConfigs(cfAccountID int64) ([]DDNSConfig, error) {
 	for rows.Next() {
 		var d DDNSConfig
 		var enabled int
-		if err := rows.Scan(&d.ID, &d.CFAccountID, &d.ZoneID, &d.RecordName, &d.RecordID, &d.IntervalMin, &enabled, &d.LastIP, &d.UpdatedAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.CFAccountID, &d.ZoneID, &d.RecordName, &d.RecordID, &d.RecordType, &d.IntervalMin, &enabled, &d.LastIP, &d.UpdatedAt); err != nil {
 			return nil, err
+		}
+		if d.RecordType == "" {
+			d.RecordType = "A"
 		}
 		d.Enabled = enabled != 0
 		out = append(out, d)
@@ -39,29 +42,35 @@ func (s *Store) GetDDNSConfig(id int64) (*DDNSConfig, error) {
 	var d DDNSConfig
 	var enabled int
 	err := s.db.QueryRow(
-		`SELECT id, cf_account_id, zone_id, record_name, record_id, interval_min, enabled, last_ip, updated_at FROM ddns_config WHERE id = ?`,
+		`SELECT id, cf_account_id, zone_id, record_name, record_id, record_type, interval_min, enabled, last_ip, updated_at FROM ddns_config WHERE id = ?`,
 		id,
-	).Scan(&d.ID, &d.CFAccountID, &d.ZoneID, &d.RecordName, &d.RecordID, &d.IntervalMin, &enabled, &d.LastIP, &d.UpdatedAt)
+	).Scan(&d.ID, &d.CFAccountID, &d.ZoneID, &d.RecordName, &d.RecordID, &d.RecordType, &d.IntervalMin, &enabled, &d.LastIP, &d.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
 	}
+	if d.RecordType == "" {
+		d.RecordType = "A"
+	}
 	d.Enabled = enabled != 0
 	return &d, nil
 }
 
-// AddDDNSConfig 新增 DDNS 配置
-func (s *Store) AddDDNSConfig(cfAccountID int64, zoneID, recordName, recordID string, intervalMin int, enabled bool) (int64, error) {
+// AddDDNSConfig 新增 DDNS 配置；recordType 为 "A" 或 "AAAA"，空则默认为 "A"
+func (s *Store) AddDDNSConfig(cfAccountID int64, zoneID, recordName, recordID, recordType string, intervalMin int, enabled bool) (int64, error) {
+	if recordType != "AAAA" {
+		recordType = "A"
+	}
 	now := time.Now().Unix()
 	en := 0
 	if enabled {
 		en = 1
 	}
 	res, err := s.db.Exec(
-		`INSERT INTO ddns_config (cf_account_id, zone_id, record_name, record_id, interval_min, enabled, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		cfAccountID, zoneID, recordName, recordID, intervalMin, en, now,
+		`INSERT INTO ddns_config (cf_account_id, zone_id, record_name, record_id, record_type, interval_min, enabled, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		cfAccountID, zoneID, recordName, recordID, recordType, intervalMin, en, now,
 	)
 	if err != nil {
 		return 0, err
@@ -100,7 +109,7 @@ func (s *Store) DeleteDDNSConfig(id int64) error {
 
 // ListEnabledDDNSConfigs 仅返回指定 CF 账号下已启用的配置，供 DDNS 协程使用；cfAccountID 为 0 时返回所有
 func (s *Store) ListEnabledDDNSConfigs(cfAccountID int64) ([]DDNSConfig, error) {
-	query := `SELECT id, cf_account_id, zone_id, record_name, record_id, interval_min, last_ip, updated_at FROM ddns_config WHERE enabled = 1`
+	query := `SELECT id, cf_account_id, zone_id, record_name, record_id, record_type, interval_min, last_ip, updated_at FROM ddns_config WHERE enabled = 1`
 	var rows *sql.Rows
 	var err error
 	if cfAccountID > 0 {
@@ -117,8 +126,11 @@ func (s *Store) ListEnabledDDNSConfigs(cfAccountID int64) ([]DDNSConfig, error) 
 	var out []DDNSConfig
 	for rows.Next() {
 		var d DDNSConfig
-		if err := rows.Scan(&d.ID, &d.CFAccountID, &d.ZoneID, &d.RecordName, &d.RecordID, &d.IntervalMin, &d.LastIP, &d.UpdatedAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.CFAccountID, &d.ZoneID, &d.RecordName, &d.RecordID, &d.RecordType, &d.IntervalMin, &d.LastIP, &d.UpdatedAt); err != nil {
 			return nil, err
+		}
+		if d.RecordType == "" {
+			d.RecordType = "A"
 		}
 		d.Enabled = true
 		out = append(out, d)

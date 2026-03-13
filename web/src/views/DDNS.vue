@@ -2,10 +2,13 @@
   <div>
     <n-space vertical>
       <n-h1>DDNS</n-h1>
-      <n-space>
+      <n-space align="center">
         <n-button @click="load">刷新</n-button>
         <n-button @click="loadPublicIP">当前公网 IP</n-button>
-        <span v-if="publicIP">公网 IP: {{ publicIP }}</span>
+        <n-space v-if="publicIPv4 || publicIPv6" vertical :size="4">
+          <span v-if="publicIPv4">IPv4: {{ publicIPv4 }}</span>
+          <span v-if="publicIPv6">IPv6: {{ publicIPv6 }}</span>
+        </n-space>
       </n-space>
       <n-data-table :columns="columns" :data="list" :bordered="false" />
     </n-space>
@@ -18,10 +21,12 @@ import { NButton, NPopconfirm, NTag, NDataTable, NSpace, NH1 } from 'naive-ui'
 import api from '../api/client'
 
 const list = ref([])
-const publicIP = ref('')
+const publicIPv4 = ref('')
+const publicIPv6 = ref('')
 
 const columns = [
   { title: 'ID', key: 'id', width: 60 },
+  { title: '类型', key: 'record_type', width: 70 },
   { title: 'Zone ID', key: 'zone_id', ellipsis: true },
   { title: '记录名', key: 'record_name' },
   { title: '间隔(分)', key: 'interval_min', width: 90 },
@@ -38,9 +43,11 @@ async function load() {
 async function loadPublicIP() {
   try {
     const { data } = await api.get('/ddns/ip')
-    publicIP.value = data.ip || ''
+    publicIPv4.value = data.ipv4 ?? data.ip ?? ''
+    publicIPv6.value = data.ipv6 ?? ''
   } catch (_) {
-    publicIP.value = ''
+    publicIPv4.value = ''
+    publicIPv6.value = ''
   }
 }
 

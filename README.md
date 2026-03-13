@@ -1,20 +1,16 @@
 # SkyLink
 
-单隧道分流 + Cloudflare DNS 管理 + DDNS，带 Web 管理界面。适用于家里服务器仅有一条樱花 frp 隧道时，按域名将流量转发到不同本地项目。
+单隧道分流 + Cloudflare DNS 管理 + DDNS（IPv4/IPv6），带 Web 管理界面。适用于家庭服务器仅有一条隧道（如樱花 Frp）时，按域名将流量转发到不同本地服务，并统一管理 DNS 与动态解析。
 
-## 功能
+## 功能概览
 
-- **反向代理**：按 Host（如 `xx.yyy.com`、`x1.yyy.com`）转发到不同本地端口
-- **一键映射**：添加映射时可选同时创建 Cloudflare CNAME 记录
-- **Cloudflare**：管理 Zone、DNS 记录（A/CNAME/AAAA）
-- **DDNS**：定时将当前公网 IP 更新到指定 CF A 记录
-- **SQLite**：映射与 DDNS 配置持久化
-
-## Web 管理界面（登录页）
-
-- 登录页采用现代化布局：左侧为大号 **SKYLINK** 品牌文案，右侧为登录卡片。
-- 未登录时隐藏顶部导航栏，登录页背景单独使用浅色渐变，便于与控制台其它页面区分。
-- 首次启动时随机密码仍通过服务日志打印，登录成功逻辑保持不变。
+| 功能 | 说明 |
+|------|------|
+| **反向代理** | 按请求 Host（如 `app.example.com`）转发到不同本地后端（如 `http://127.0.0.1:3000`） |
+| **一键映射** | 添加映射时可同时创建 Cloudflare CNAME 记录，并可使用设置中的默认 CNAME 目标（如 Frp 出口域名） |
+| **Cloudflare** | 多账号支持；在选定账号下管理 Zone、DNS 记录（A / AAAA / CNAME / TXT / MX 等） |
+| **DDNS** | 定时将当前公网 **IPv4 / IPv6** 更新到指定 Cloudflare A 或 AAAA 记录，按账号隔离 |
+| **SQLite** | 映射、DDNS 配置、Cloudflare 账号与设置持久化 |
 
 ## 本地开发
 
@@ -32,13 +28,13 @@ go run ./cmd/server
 
 默认：反代 `:18080`，管理 `:19080`，数据库 `./data/skylink.db`。
 
-### 前端（可选，用于开发时热更新）
+### 前端（可选，开发时热更新）
 
 ```bash
 cd web && npm install && npm run dev
 ```
 
-浏览器访问 `http://localhost:5173`，Vite 会代理 `/api` 到 `:19080`。
+浏览器访问 `http://localhost:5173`，Vite 会将 `/api` 代理到 `:19080`。
 
 ### 打包含前端的二进制
 
@@ -47,13 +43,9 @@ cd web && npm ci && npm run build
 go build -o skylink ./cmd/server
 ```
 
-## Docker
+## Docker 部署
 
-### 一键拉取并部署（推荐）
-
-使用已发布镜像直接启动，无需本地构建。
-
-#### 方式 A：docker run
+### 方式 A：docker run
 
 ```bash
 docker pull queensu/skylink:latest
@@ -67,9 +59,9 @@ docker run -d \
   queensu/skylink:latest
 ```
 
-#### 方式 B：docker compose
+### 方式 B：docker compose
 
-创建 `docker-compose.yml`（示例）：
+示例 `docker-compose.yml`：
 
 ```yaml
 services:
@@ -91,61 +83,59 @@ services:
 docker compose up -d
 ```
 
-```bash
-docker compose up -d
-```
+- **反代入口**：`http://<host>:18080`
+- **管理界面**：`http://<host>:19080`
 
-- 反代：`http://localhost:18080`
-- 管理界面：`http://localhost:19080`
+## 管理端登录与鉴权
 
-### 管理端登录
-
-- **首次启动**：服务日志会打印一次随机密码（仅第一次生成时打印）。
+- **首次启动**：服务日志会打印一次随机管理员密码（仅首次生成时打印）。
 - **登录地址**：`http://<host>:19080/#/login`
-- **修改密码**：登录后在「设置」页面修改；新密码会持久化到 SQLite（挂载 `./data` 目录即可持久化）。
-- **鉴权方式**：管理 API 需要 `Authorization: Bearer <密码>`。
+- **修改密码**：登录后在「设置」页修改；密码持久化到 SQLite（挂载 `./data` 即可持久化）。
+- **鉴权**：管理 API 需在请求头中携带 `Authorization: Bearer <密码>`。
 
-## GitHub Actions（Docker 镜像）
+可选环境变量：
 
-仓库内置 Workflow：push 到 `main` 或手动触发时会构建并推送到 GHCR。
+- `SKYLINK_ADMIN_PASSWORD`：固定管理员密码（不写入数据库，与随机/持久化密码并存）。
 
-- **镜像地址**：`ghcr.io/<owner>/<repo>`
-- **版本号（tag）**：`v<github.run_number>`（即 GitHub 构建号），同时推送 `latest`
-- **权限**：使用 `GITHUB_TOKEN` 推送到 GitHub Packages（需要 `packages: write`）
-
-同一 Workflow 也会创建一个对应版本的 **GitHub Release**（tag 同上），并上传可下载的二进制：
-
-- `skylink_linux_amd64`
-- `skylink_linux_arm64`
-- `SHA256SUMS`
-
-### 环境变量
+## 环境变量
 
 | 变量 | 说明 |
 |------|------|
 | `SKYLINK_PROXY_PORT` | 反代监听端口，默认 18080 |
-| `SKYLINK_ADMIN_PORT` | 管理 API/GUI 端口，默认 19080 |
+| `SKYLINK_ADMIN_PORT` | 管理 API / 前端端口，默认 19080 |
 | `SKYLINK_DB_PATH` | SQLite 路径，默认 `./data/skylink.db` |
-
-### 与樱花 Frp 配合
-
-1. 樱花 frp 创建一条隧道：将 80（及可选 443）转发到本机 SkyLink 反代端口（如 18080）。
-2. 在 SkyLink 管理界面添加映射：域名 `xx.yyy.com` → `http://127.0.0.1:3000` 等。
-3. 在 Cloudflare 将域名 CNAME 到樱花出口域名，或使用「一键映射」自动创建 CNAME。
 
 ## 配置文件（可选）
 
-可通过 `-config config.yaml` 指定 YAML 配置，例如：
+通过 `-config config.yaml` 指定 YAML 配置，例如：
 
 ```yaml
 app:
-  proxy_port: 80
-  admin_port: 8080
+  proxy_port: 18080
+  admin_port: 19080
   db_path: ./data/skylink.db
-
-cloudflare:
-  api_token: ""
-  zone_id: ""
 ```
 
-敏感信息建议用环境变量覆盖。
+敏感信息建议用环境变量覆盖。Cloudflare 与 DDNS 使用管理界面中配置的多账号与 DDNS 条目，无需在配置文件中填写 API Token。
+
+## 与樱花 Frp 配合
+
+1. 在樱花 Frp 创建一条隧道：将 80（及可选 443）转发到本机 SkyLink 反代端口（如 18080）。
+2. 在 SkyLink 管理界面「映射」页添加映射：域名 `xx.yyy.com` → 后端 `http://127.0.0.1:3000` 等。
+3. 在 Cloudflare 将域名 CNAME 到樱花出口域名，或使用「一键映射」在添加映射时自动创建 CNAME。
+
+## DDNS 说明
+
+- 支持 **A（IPv4）** 与 **AAAA（IPv6）** 记录；每条 DDNS 配置对应一条记录类型。
+- 公网 IP 通过公共接口获取（IPv4 / IPv6 分别有多个备用源）；后台按分钟轮询并更新已启用的配置。
+- DDNS 配置与 Cloudflare 多账号绑定：在管理界面选择当前 CF 账号后，DDNS 列表与新增均在该账号下生效，更新时使用对应账号的 API 更新对应 Zone 下的记录。
+
+## GitHub Actions（Docker 镜像与 Release）
+
+仓库内 Workflow：推送到 `main` 或手动触发时构建并推送镜像到 GHCR，并创建 GitHub Release。
+
+- **镜像**：`ghcr.io/<owner>/<repo>`
+- **版本 tag**：`v<github.run_number>`，同时推送 `latest`
+- **Release 附件**：`skylink_linux_amd64`、`skylink_linux_arm64`、`SHA256SUMS`
+
+需为仓库配置 `packages: write` 权限。
