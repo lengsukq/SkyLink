@@ -8,13 +8,15 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/skylink/skylink/internal/api"
 	"github.com/skylink/skylink/internal/config"
+	"github.com/skylink/skylink/internal/easytier"
 	"github.com/skylink/skylink/internal/proxy"
-	"github.com/skylink/skylink/internal/store"
 	"github.com/skylink/skylink/internal/security"
+	"github.com/skylink/skylink/internal/store"
 	"github.com/skylink/skylink/static"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -23,7 +25,7 @@ func main() {
 	configPath := flag.String("config", "", "path to config yaml")
 	flag.Parse()
 
-	appCfg, _, err := config.Load(*configPath)
+	appCfg, _, easyTierCfg, err := config.Load(*configPath)
 	if err != nil {
 		log.Fatal("config:", err)
 	}
@@ -51,7 +53,10 @@ func main() {
 		log.Printf("static frontend not available: %v", err)
 		frontendFS = nil
 	}
-	srv := api.New(st, pr, nil, frontendFS)
+	easyTierEnvPath := filepath.Join(filepath.Dir(appCfg.DBPath), "easytier.env")
+	daemonManager := easytier.NewDaemonManager()
+	runtimeDownloader := easytier.NewRuntimeDownloader(easyTierCfg.RuntimeDir)
+	srv := api.New(st, pr, nil, frontendFS, easyTierEnvPath, daemonManager, easyTierCfg, runtimeDownloader)
 	adminHandler := srv.Handler()
 	defer srv.StopDDNS()
 

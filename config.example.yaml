@@ -7,3 +7,10 @@ app:
 cloudflare:
   api_token: ""
   zone_id: ""
+
+# EasyTier 可选；推荐在 Web UI 的「EasyTier」页中完成网络/版本等配置，写入 data/easytier.env 后由 docker compose 通过 env_file 加载。
+# 下面仅配置 SkyLink 自身如何连接 EasyTier 以及 env 文件路径。
+easytier:
+  rpc_address: "easytier:15888"
+  enabled: false
+  env_file_path: ""

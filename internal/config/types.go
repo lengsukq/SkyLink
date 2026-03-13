@@ -13,3 +13,13 @@ type Cloudflare struct {
 	APIToken string `yaml:"api_token"` // CF API Token，权限 Zone.DNS Edit
 	ZoneID   string `yaml:"zone_id"`   // 默认 Zone ID（可选）
 }
+
+// EasyTier 可选配置（RPC 地址、env 文件路径等）
+type EasyTier struct {
+	RPCAddress   string `yaml:"rpc_address"`    // EasyTier RPC 地址，如 easytier:15888
+	Enabled      bool   `yaml:"enabled"`        // 是否启用
+	EnvFilePath  string `yaml:"env_file_path"`  // 写入的 env 文件路径（可选）
+	DaemonEnabled bool   `yaml:"daemon_enabled"` // 是否由 SkyLink 直接管理 easytier-daemon 进程（裸机场景）
+	DaemonPath    string `yaml:"daemon_path"`    // easytier-daemon 二进制路径，空则在 PATH 中查找
+	RuntimeDir    string `yaml:"runtime_dir"`    // 自动下载 EasyTier 二进制的缓存目录（默认 ./data/easytier-bin）
+}

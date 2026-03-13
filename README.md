@@ -10,6 +10,7 @@
 | **一键映射** | 添加映射时可同时创建 Cloudflare CNAME 记录，并可使用设置中的默认 CNAME 目标（如 Frp 出口域名） |
 | **Cloudflare** | 多账号支持；在选定账号下管理 Zone、DNS 记录（A / AAAA / CNAME / TXT / MX 等） |
 | **DDNS** | 定时将当前公网 **IPv4 / IPv6** 更新到指定 Cloudflare A 或 AAAA 记录，按账号隔离 |
+| **EasyTier** | 可选 mesh VPN：在界面配置网络/版本，查看节点与路由，映射时可选 mesh 内节点作为后端 |
 | **SQLite** | 映射、DDNS 配置、Cloudflare 账号与设置持久化 |
 
 ## 本地开发
@@ -104,6 +105,8 @@ docker compose up -d
 | `SKYLINK_PROXY_PORT` | 反代监听端口，默认 18080 |
 | `SKYLINK_ADMIN_PORT` | 管理 API / 前端端口，默认 19080 |
 | `SKYLINK_DB_PATH` | SQLite 路径，默认 `./data/skylink.db` |
+| `SKYLINK_EASYTIER_RPC` | EasyTier RPC 地址（SkyLink 连接 daemon 用），默认 `easytier:15888` |
+| `SKYLINK_EASYTIER_ENV_FILE` | EasyTier env 文件路径（写入配置用），默认与 DB 同目录的 `easytier.env` |
 
 ## 配置文件（可选）
 
@@ -114,6 +117,12 @@ app:
   proxy_port: 18080
   admin_port: 19080
   db_path: ./data/skylink.db
+
+# 可选
+easytier:
+  rpc_address: "easytier:15888"
+  enabled: false
+  env_file_path: ""
 ```
 
 敏感信息建议用环境变量覆盖。Cloudflare 与 DDNS 使用管理界面中配置的多账号与 DDNS 条目，无需在配置文件中填写 API Token。
@@ -129,6 +138,106 @@ app:
 - 支持 **A（IPv4）** 与 **AAAA（IPv6）** 记录；每条 DDNS 配置对应一条记录类型。
 - 公网 IP 通过公共接口获取（IPv4 / IPv6 分别有多个备用源）；后台按分钟轮询并更新已启用的配置。
 - DDNS 配置与 Cloudflare 多账号绑定：在管理界面选择当前 CF 账号后，DDNS 列表与新增均在该账号下生效，更新时使用对应账号的 API 更新对应 Zone 下的记录。
+
+## EasyTier（可选）
+
+在 Docker Compose 部署下，可启用 [EasyTier](https://easytier.rs/) mesh VPN，使多台设备组成虚拟内网，并在「映射」中将后端指向 mesh 内节点。
+
+### 快速上手（推荐路径：Docker 容器模式）
+
+1. 在 `docker-compose.yml` 中加入 `easytier` 服务，并通过 `env_file: ./data/easytier.env` 读取配置（示例 compose 见仓库根目录）。
+2. 启动 SkyLink：`docker compose up -d skylink`。
+3. 打开管理界面 → **EasyTier** 页，在「配置」卡片中：
+   - 填写 **网络名**、**网络密钥**、**初始节点（peers）**。这些字段分别对应 EasyTier 的 `network_identity.name`、`network_identity.secret` 与 `peers[].uri`，会写入 `ET_NETWORK_NAME`、`ET_NETWORK_SECRET`、`ET_PEERS`。
+   - 选择 **EasyTier 版本（镜像 tag）**。保存后会写入 `EASYTIER_IMAGE_TAG`，compose 中使用 `image: easytier/easytier:${EASYTIER_IMAGE_TAG:-latest}`，推荐锁定为具体 tag（如 `v2.2.3`）。
+   - 如需可选配置，再设置主机名（`hostname`）、公网发现节点（`external-node`）、子网代理（`proxy-networks`）、是否开启 DHCP 以及 VPN Portal。
+4. 点击「保存配置」。配置会写入 `./data/easytier.env`，compose 中 EasyTier 服务通过 `env_file: ./data/easytier.env` 读取。
+5. 启动或重启 EasyTier：`docker compose up -d easytier`。
+6. 在管理界面 **EasyTier** 页的「状态」卡片中确认本机 mesh IP 与 peers / 路由是否正常。
+7. 在「映射」添加/编辑时，可使用「从 mesh 选择」下拉本机或对等节点 IP，填入端口后自动生成后端地址（如 `http://10.144.144.2:3000`）。
+
+### 版本与高级配置
+
+- **配置版本**：在 EasyTier 页「EasyTier 版本」中填写镜像 tag（默认使用 `latest`）。保存后写入 `EASYTIER_IMAGE_TAG`，compose 使用 `image: easytier/easytier:${EASYTIER_IMAGE_TAG:-latest}`。若希望稳定在某一版本，建议在此处填入具体 tag（如 `v2.2.3`）。
+- **当前运行版本**：状态区显示通过 easytier-cli 获取的当前版本；当运行版本与配置中的镜像 tag 不一致时，通常表示已修改配置但尚未重启 EasyTier 容器。
+- **检查更新**：点击「检查更新」拉取 GitHub 最新 release，可「使用此版本」填入配置；升级时在 EasyTier 页选择目标版本并保存，然后执行：`docker compose pull easytier && docker compose up -d easytier` 完成升级。
+- **扩展配置项（与官方配置的对应关系）**：
+  - `hostname` → `ET_HOSTNAME`：节点主机名（可选）。
+  - `external-node` → `ET_EXTERNAL_NODE`：公网发现节点地址，如 `tcp://public.easytier.cn:11010`，仅用于协助发现公网节点，非必填。
+  - `proxy-networks` → `ET_PROXY_NETWORKS`：子网代理 CIDR 列表，如 `10.0.0.0/24`，可用逗号或换行分隔多个，对应 EasyTier `vpn_portal_config.proxy_networks`。
+  - `dhcp` → `ET_DHCP=1`：启用后 IPv4 可留空，由 EasyTier 自动分配。
+  - `vpn_portal` → `ET_VPN_PORTAL`：VPN Portal（WireGuard）配置地址，如 `wg://0.0.0.0:11013/10.14.14.0/24`。
+
+### WireGuard / VPN Portal
+
+1. 在 EasyTier 页高级配置中填写 `VPN Portal（WireGuard）`，例如 `wg://0.0.0.0:11013/10.14.14.0/24`，并保存配置。
+2. 通过 `docker compose restart easytier` 或 `docker compose up -d easytier` 重启 EasyTier 容器，使 VPN Portal 配置生效。
+3. EasyTier 运行正常后，在管理界面 **EasyTier** 页的「WireGuard 客户端配置（VPN Portal）」卡片点击「获取配置」，即可看到 `easytier-cli vpn-portal` 返回的 WireGuard 客户端配置文本。
+4. 点击「复制」按钮，将配置导入本地 WireGuard 客户端即可接入 mesh 网络。
+
+### 重启与升级
+
+- 修改配置或版本后，需重启 EasyTier 容器使配置生效：`docker compose restart easytier`。
+- 升级版本：在 EasyTier 页选择新版本并保存，然后 `docker compose pull easytier && docker compose up -d easytier`。
+
+### 故障排查（EasyTier）
+
+- **状态页显示“EasyTier 当前未启用”**：请在 EasyTier 页开启「启用」开关并保存配置，然后启动/重启 `easytier` 容器。
+- **状态页提示“无法获取 EasyTier 状态 / RPC 地址不可达”**：
+  - 检查 `SKYLINK_EASYTIER_RPC` 或 UI 中的 RPC 地址是否指向正确的 EasyTier 容器（通常是 `easytier:15888`）。
+  - 使用 `docker compose ps` 确认 `easytier` 容器已启动并与 `skylink` 处于同一网络。
+- **WireGuard 配置为空或获取失败**：
+  - 确认在 EasyTier 高级配置中已填入正确的 `VPN Portal（WireGuard）` 地址，并已重启 `easytier` 容器。
+  - 确认 EasyTier 已成功加入目标网络（状态页上应有 peers / 路由）。
+
+### 裸机 + 一站式 EasyTier（Daemon 模式）
+
+在裸机部署且不使用 Docker 管理 EasyTier 容器时，可以让 SkyLink 直接拉起并管理 EasyTier 守护进程，实现“一站式”启用。支持两种方式准备 EasyTier 二进制：
+
+- **方式 A：自行安装 EasyTier**（兼容已有环境）：
+  - 确保 `easytier-cli` 与 `easytier-daemon`（或 `easytier-core`）已安装并可在 PATH 中找到，或准备好二进制的绝对路径。
+  - 通过环境变量或 YAML 显式指定：
+
+    环境变量：
+
+    ```bash
+    export SKYLINK_EASYTIER_DAEMON_ENABLED=1
+    export SKYLINK_EASYTIER_DAEMON_PATH=/usr/local/bin/easytier-daemon # 可选，默认从 PATH 查找
+    ```
+
+    YAML：
+
+    ```yaml
+    easytier:
+      rpc_address: "127.0.0.1:15888"
+      enabled: true
+      daemon_enabled: true
+      daemon_path: "/usr/local/bin/easytier-daemon" # 可选
+    ```
+
+- **方式 B：由 SkyLink 自动下载 EasyTier 运行时**（无需预装）：
+  - 启用 daemon 模式但不设置 `daemon_path`，SkyLink 会使用内置的 RuntimeDownloader：
+    - 根据 EasyTier 页中配置的版本（镜像 tag）和后端平台（linux/amd64、darwin/arm64 等），从 GitHub Releases 自动下载对应的 EasyTier 守护进程二进制；
+    - 下载结果缓存到 `./data/easytier-bin/<version>/<os-arch>/`（可通过 `SKYLINK_EASYTIER_RUNTIME_DIR` 或 YAML 的 `easytier.runtime_dir` 覆盖）。
+  - 在 Web 界面 **EasyTier** 页的「EasyTier 版本」下方，会显示：
+    - 当前后端平台（如 `linux/amd64`）；
+    - 「下载/更新 EasyTier 运行时」按钮：点击后会为当前平台按当前版本下载或更新 EasyTier 二进制。
+
+3. 启动 SkyLink（裸机）：
+
+```bash
+go run ./cmd/server -config config.yaml
+```
+
+4. 在管理界面 **EasyTier** 页：
+   - 像容器模式一样配置网络名、密钥、peers、版本等并点击「保存配置」；
+   - 配置会写入 `./data/easytier.env`；
+   - 若开启 daemon 模式并勾选「启用」，SkyLink 会尝试自动启动 `easytier-daemon`。
+5. 在 **状态** 卡片中：
+   - 可以看到 EasyTier 当前运行状态（版本、mesh IP、peers / 路由）；
+   - 额外看到 Daemon 状态（运行中 / 未运行 / 上次启动错误），并可一键「启动 / 停止 / 重启」 EasyTier 守护进程。
+
+> 提示：Daemon 模式仅在裸机场景下推荐使用；若通过 Docker / docker compose 管理 EasyTier，建议继续使用容器模式，由编排系统负责拉起与重启。即便在 Daemon 模式下，也始终可以通过 `SKYLINK_EASYTIER_DAEMON_PATH` 显式覆盖自动下载的二进制路径。
 
 ## GitHub Actions（Docker 镜像与 Release）
 

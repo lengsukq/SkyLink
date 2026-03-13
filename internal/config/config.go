@@ -2,12 +2,13 @@ package config
 
 import (
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
 // Load 从环境变量和可选 YAML 文件加载配置
-func Load(path string) (*App, *Cloudflare, error) {
+func Load(path string) (*App, *Cloudflare, *EasyTier, error) {
 	app := &App{
 		ProxyPort:  DefaultProxyPort,
 		AdminPort:  DefaultAdminPort,
@@ -15,13 +16,20 @@ func Load(path string) (*App, *Cloudflare, error) {
 		ConfigPath: path,
 	}
 	cf := &Cloudflare{}
+	et := &EasyTier{
+		RPCAddress:    DefaultEasyTierRPC,
+		DaemonEnabled: false,
+		DaemonPath:    DefaultEasyTierDaemonPath,
+		RuntimeDir:    DefaultEasyTierRuntimeDir,
+	}
 
 	if path != "" {
 		data, err := os.ReadFile(path)
 		if err == nil {
 			var file struct {
-				App *App         `yaml:"app"`
-				CF  *Cloudflare  `yaml:"cloudflare"`
+				App     *App     `yaml:"app"`
+				CF      *Cloudflare `yaml:"cloudflare"`
+				EasyTier *EasyTier `yaml:"easytier"`
 			}
 			if err := yaml.Unmarshal(data, &file); err == nil {
 				if file.App != nil {
@@ -29,6 +37,9 @@ func Load(path string) (*App, *Cloudflare, error) {
 				}
 				if file.CF != nil {
 					cf = file.CF
+				}
+				if file.EasyTier != nil {
+					mergeEasyTier(et, file.EasyTier)
 				}
 			}
 		}
@@ -48,8 +59,23 @@ func Load(path string) (*App, *Cloudflare, error) {
 	if v := os.Getenv("SKYLINK_DB_PATH"); v != "" {
 		app.DBPath = v
 	}
+	if v := os.Getenv("SKYLINK_EASYTIER_RPC"); v != "" {
+		et.RPCAddress = v
+	}
+	if v := os.Getenv("SKYLINK_EASYTIER_ENV_FILE"); v != "" {
+		et.EnvFilePath = v
+	}
+	if v := os.Getenv("SKYLINK_EASYTIER_DAEMON_ENABLED"); v != "" {
+		et.DaemonEnabled = v == "1" || strings.EqualFold(v, "true")
+	}
+	if v := os.Getenv("SKYLINK_EASYTIER_DAEMON_PATH"); v != "" {
+		et.DaemonPath = v
+	}
+	if v := os.Getenv("SKYLINK_EASYTIER_RUNTIME_DIR"); v != "" {
+		et.RuntimeDir = v
+	}
 
-	return app, cf, nil
+	return app, cf, et, nil
 }
 
 func mergeApp(dst, src *App) {
@@ -64,6 +90,27 @@ func mergeApp(dst, src *App) {
 	}
 	if src.ConfigPath != "" {
 		dst.ConfigPath = src.ConfigPath
+	}
+}
+
+func mergeEasyTier(dst, src *EasyTier) {
+	if src.RPCAddress != "" {
+		dst.RPCAddress = src.RPCAddress
+	}
+	if src.EnvFilePath != "" {
+		dst.EnvFilePath = src.EnvFilePath
+	}
+	if src.Enabled {
+		dst.Enabled = true
+	}
+	if src.DaemonEnabled {
+		dst.DaemonEnabled = true
+	}
+	if src.DaemonPath != "" {
+		dst.DaemonPath = src.DaemonPath
+	}
+	if src.RuntimeDir != "" {
+		dst.RuntimeDir = src.RuntimeDir
 	}
 }
 

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"crypto/subtle"
 	"errors"
 	"io/fs"
@@ -11,10 +12,13 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/skylink/skylink/internal/cloudflare"
+	"github.com/skylink/skylink/internal/config"
 	"github.com/skylink/skylink/internal/ddns"
+	"github.com/skylink/skylink/internal/easytier"
 	"github.com/skylink/skylink/internal/proxy"
 	"github.com/skylink/skylink/internal/security"
 	"github.com/skylink/skylink/internal/store"
@@ -37,11 +41,29 @@ type Server struct {
 	currentCFAccountID atomic.Value // int64, 0 means unset
 
 	ddnsUpdater *ddns.Updater
+
+	// EasyTier：默认 env 文件路径（与 DB 同目录的 easytier.env）
+	easyTierEnvPath string
+
+	// EasyTier daemon lifecycle (裸机场景，可选启用)
+	easyTierDaemon easytier.DaemonManager
+	easyTierCfg    *config.EasyTier
+
+	// EasyTier runtime（自动下载 easytier-daemon）
+	easyTierRuntime *easytier.RuntimeDownloader
 }
 
-// New 创建 API 服务；staticFS 可为 nil（不提供 GUI 时）
-func New(st *store.Store, pr *proxy.Proxy, cf *cloudflare.Client, staticFS fs.FS) *Server {
-	s := &Server{store: st, proxy: pr, staticFS: staticFS}
+// New 创建 API 服务；staticFS 可为 nil（不提供 GUI 时）；easyTierEnvPath 为 EasyTier env 文件默认路径，空则仅从 store 读配置不写文件
+func New(st *store.Store, pr *proxy.Proxy, cf *cloudflare.Client, staticFS fs.FS, easyTierEnvPath string, etDaemon easytier.DaemonManager, etCfg *config.EasyTier, etRuntime *easytier.RuntimeDownloader) *Server {
+	s := &Server{
+		store:          st,
+		proxy:          pr,
+		staticFS:       staticFS,
+		easyTierEnvPath: easyTierEnvPath,
+		easyTierDaemon:  etDaemon,
+		easyTierCfg:     etCfg,
+		easyTierRuntime: etRuntime,
+	}
 	hash, err := st.GetAdminPasswordHash()
 	if err != nil {
 		log.Printf("load admin password hash failed: %v", err)
@@ -77,6 +99,9 @@ func New(st *store.Store, pr *proxy.Proxy, cf *cloudflare.Client, staticFS fs.FS
 	}
 
 	s.startDDNSUpdater()
+
+	// 裸机 daemon 模式下，根据配置尝试自动拉起 EasyTier
+	s.maybeStartEasyTierDaemon()
 	return s
 }
 
@@ -130,6 +155,19 @@ func (s *Server) Handler() http.Handler {
 	// 全局设置
 	r.GET("/api/settings", s.getSettings)
 	r.PUT("/api/settings", s.updateSettings)
+
+	// EasyTier
+	r.GET("/api/easytier/config", s.getEasyTierConfig)
+	r.PUT("/api/easytier/config", s.putEasyTierConfig)
+	r.GET("/api/easytier/status", s.getEasyTierStatus)
+	r.GET("/api/easytier/version", s.getEasyTierVersion)
+	r.GET("/api/easytier/version/check", s.getEasyTierVersionCheck)
+	r.GET("/api/easytier/vpn-portal", s.getEasyTierVPNPortal)
+	r.GET("/api/easytier/platform", s.getEasyTierPlatform)
+	r.POST("/api/easytier/runtime/install", s.postEasyTierRuntimeInstall)
+	r.POST("/api/easytier/daemon/start", s.postEasyTierDaemonStart)
+	r.POST("/api/easytier/daemon/stop", s.postEasyTierDaemonStop)
+	r.GET("/api/easytier/daemon/status", s.getEasyTierDaemonStatus)
 
 	// 其它路径回退到内嵌静态前端（SPA）
 	r.NoRoute(s.serveFrontend)
@@ -355,4 +393,61 @@ func (s *Server) StopDDNS() {
 	if s.ddnsUpdater != nil {
 		s.ddnsUpdater.Stop()
 	}
+}
+
+// StopEasyTierDaemon 在进程退出前停止 EasyTier daemon（若启用）
+func (s *Server) StopEasyTierDaemon() {
+	if s.easyTierDaemon == nil || s.easyTierCfg == nil || !s.easyTierCfg.DaemonEnabled {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := s.easyTierDaemon.Stop(ctx); err != nil {
+		log.Printf("stop EasyTier daemon failed: %v", err)
+	}
+}
+
+func (s *Server) maybeStartEasyTierDaemon() {
+	if s.easyTierDaemon == nil || s.easyTierCfg == nil || !s.easyTierCfg.DaemonEnabled {
+		return
+	}
+	cfg, err := s.store.GetEasyTierConfig()
+	if err != nil {
+		log.Printf("load EasyTier config for daemon failed: %v", err)
+		return
+	}
+	if cfg == nil || !cfg.Enabled {
+		return
+	}
+	envPath := cfg.EnvFilePath
+	if envPath == "" && s.easyTierEnvPath != "" {
+		envPath = s.easyTierEnvPath
+	}
+	daemonPath := s.resolveDaemonPath(context.Background(), cfg.ImageTag)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := s.easyTierDaemon.Start(ctx, easytier.DaemonConfig{
+		BinaryPath: daemonPath,
+		EnvFile:    envPath,
+	}); err != nil {
+		log.Printf("auto start EasyTier daemon failed: %v", err)
+	}
+}
+
+// resolveDaemonPath 根据配置和自动下载器决定要使用的 easytier-daemon 路径。
+// 优先级：显式 DaemonPath > RuntimeDownloader 下载路径 > 默认二进制名（PATH）。
+func (s *Server) resolveDaemonPath(ctx context.Context, imageTag string) string {
+	if s.easyTierCfg != nil && strings.TrimSpace(s.easyTierCfg.DaemonPath) != "" {
+		return s.easyTierCfg.DaemonPath
+	}
+	if s.easyTierRuntime != nil {
+		version := imageTag
+		if strings.TrimSpace(version) == "" {
+			version = config.DefaultEasyTierTag
+		}
+		if path, err := s.easyTierRuntime.EnsureDaemon(ctx, version, easytier.CurrentPlatform()); err == nil && strings.TrimSpace(path) != "" {
+			return path
+		}
+	}
+	return easytier.DefaultDaemonBinary()
 }

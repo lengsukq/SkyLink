@@ -103,6 +103,7 @@ const navItems = computed(() => [
   { path: '/mappings', label: '映射' },
   { path: '/cloudflare', label: 'Cloudflare' },
   { path: '/ddns', label: 'DDNS' },
+  { path: '/easytier', label: 'EasyTier' },
   { path: '/settings', label: '设置' },
 ])
 

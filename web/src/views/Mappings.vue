@@ -38,6 +38,19 @@
         <n-form-item label="后端" path="backend" required>
           <n-input v-model:value="addForm.backend" placeholder="http://127.0.0.1:3000" />
         </n-form-item>
+        <n-form-item label="从 mesh 选择">
+          <n-space>
+            <n-select
+              v-model:value="meshSelectedIp"
+              :options="meshIpOptions"
+              placeholder="选择 mesh 节点 IP"
+              clearable
+              style="width: 160px"
+            />
+            <n-input-number v-model:value="meshPort" :min="1" :max="65535" placeholder="端口" style="width: 100px" />
+            <n-button size="small" :disabled="!meshSelectedIp" @click="fillBackendFromMesh('add')">填入</n-button>
+          </n-space>
+        </n-form-item>
       </n-form>
     </n-modal>
 
@@ -71,6 +84,19 @@
         <n-form-item label="后端" required>
           <n-input v-model:value="editForm.backend" placeholder="http://127.0.0.1:3000" />
         </n-form-item>
+        <n-form-item label="从 mesh 选择">
+          <n-space>
+            <n-select
+              v-model:value="meshSelectedIpEdit"
+              :options="meshIpOptions"
+              placeholder="选择 mesh 节点 IP"
+              clearable
+              style="width: 160px"
+            />
+            <n-input-number v-model:value="meshPortEdit" :min="1" :max="65535" placeholder="端口" style="width: 100px" />
+            <n-button size="small" :disabled="!meshSelectedIpEdit" @click="fillBackendFromMesh('edit')">填入</n-button>
+          </n-space>
+        </n-form-item>
       </n-form>
     </n-modal>
 
@@ -95,8 +121,8 @@
 </template>
 
 <script setup>
-import { ref, h, onMounted, computed, inject } from 'vue'
-import { NButton, NPopconfirm, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NSelect, NSpin, NEllipsis, NTag } from 'naive-ui'
+import { ref, h, onMounted, computed, inject, watch } from 'vue'
+import { NButton, NPopconfirm, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NInputNumber, NSelect, NSpin, NEllipsis, NTag } from 'naive-ui'
 import api from '../api/client'
 import { getAllCachedRecordsForAccount, setCachedRecords } from '../utils/cfRecordsCache'
 import PageHeader from '../components/PageHeader.vue'
@@ -118,6 +144,39 @@ const zones = ref([])
 const cfCurrentAccountId = inject('cfCurrentAccountId', ref(null))
 const refreshCfState = inject('refreshCfState', () => Promise.resolve())
 const zoneOptions = computed(() => zones.value.map((z) => ({ label: z.name, value: z.id })))
+
+const meshIpOptions = ref([])
+const meshSelectedIp = ref(null)
+const meshPort = ref(3000)
+const meshSelectedIpEdit = ref(null)
+const meshPortEdit = ref(3000)
+
+async function loadMeshIps() {
+  try {
+    const { data } = await api.get('/easytier/status')
+    const ips = []
+    if (data?.self_ipv4) ips.push({ label: `${data.self_ipv4} (本机)`, value: data.self_ipv4 })
+    ;(data?.peers || []).forEach((p) => {
+      if (p.ipv4 && p.ipv4 !== data?.self_ipv4) ips.push({ label: p.ipv4, value: p.ipv4 })
+    })
+    meshIpOptions.value = ips
+  } catch (_) {
+    meshIpOptions.value = []
+  }
+}
+
+function fillBackendFromMesh(which) {
+  const ip = which === 'add' ? meshSelectedIp.value : meshSelectedIpEdit.value
+  const port = which === 'add' ? meshPort.value : meshPortEdit.value
+  if (!ip) return
+  const url = `http://${ip}:${port || 3000}`
+  if (which === 'add') addForm.value.backend = url
+  else editForm.value.backend = url
+}
+
+watch([showAdd, showEdit], ([add, edit]) => {
+  if (add || edit) loadMeshIps()
+})
 
 function normalizeName(name) {
   return (name || '').trim().toLowerCase().replace(/\.$/, '')
