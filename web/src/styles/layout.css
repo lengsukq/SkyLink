@@ -14,3 +14,20 @@
 .status-summary {
   margin-left: auto;
 }
+
+.cloudflare-stats {
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: #666;
+}
+
+.cloudflare-pagination {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.ddns-ip-hint {
+  font-size: 12px;
+  color: #666;
+}

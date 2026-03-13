@@ -1,7 +1,7 @@
 <template>
   <div>
     <n-h1>仪表盘</n-h1>
-    <n-grid cols="1 s:1 m:2 l:3" :x-gap="16" :y-gap="16" class="page-section">
+    <n-grid cols="1 s:1 m:2 l:3 xl:4" x-gap="16" y-gap="16" class="page-section">
       <n-gi>
         <n-card title="映射数量" size="small" class="page-card">
           <n-statistic :value="stats.mappings_count" />

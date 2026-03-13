@@ -56,7 +56,7 @@
         </template>
       </page-header>
       <n-card class="page-section page-card">
-        <div class="cloudflare-stats" v-if="filteredRecords.length">
+        <div v-if="filteredRecords.length" class="cloudflare-stats">
           共 {{ records.length }} 条记录，当前筛选出 {{ filteredRecords.length }} 条。
         </div>
         <n-spin :show="loading">
@@ -65,6 +65,7 @@
             :data="pagedRecords"
             :bordered="false"
             :single-line="false"
+            size="small"
           >
             <template #empty>
               <empty-state
@@ -74,14 +75,16 @@
             </template>
           </n-data-table>
         </n-spin>
-        <n-pagination
-          v-model:page="page"
-          :page-size="pageSize"
-          :item-count="filteredRecords.length"
-          :page-sizes="[10, 20, 50, 100]"
-          show-size-picker
-          @update:page-size="onPageSizeChange"
-        />
+        <div class="cloudflare-pagination">
+          <n-pagination
+            v-model:page="page"
+            :page-size="pageSize"
+            :item-count="filteredRecords.length"
+            :page-sizes="[10, 20, 50, 100]"
+            show-size-picker
+            @update:page-size="onPageSizeChange"
+          />
+        </div>
       </n-card>
 
       <n-modal v-model:show="showCreate" title="新增 DNS 记录" preset="dialog" positive-text="创建" :loading="createLoading" @positive-click="onCreate">

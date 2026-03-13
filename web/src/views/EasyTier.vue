@@ -6,7 +6,7 @@
     />
 
     <n-card title="状态" class="page-section page-card">
-      <n-space vertical>
+      <n-space vertical :size="12">
         <n-space align="center">
           <n-button size="small" :loading="statusLoading" @click="loadStatus">刷新</n-button>
           <span v-if="status.version" class="status-version">当前运行版本: {{ status.version }}</span>
@@ -73,7 +73,7 @@
       </n-space>
     </n-card>
 
-    <n-grid cols="1 s:1 m:2 l:2" x-gap="16" y-gap="16" class="page-section">
+    <n-grid cols="1 s:1 m:2 l:2 xl:3" x-gap="16" y-gap="16" class="page-section">
       <n-gi>
         <n-card title="版本与运行时" class="page-card">
           <n-space vertical size="small">
@@ -214,11 +214,11 @@
     </n-grid>
 
     <n-card title="WireGuard 客户端配置（VPN Portal）" class="page-section page-card">
-      <div class="status-hint" style="margin-bottom: 8px">
-        需要在上方网络配置中启用 VPN Portal 后再获取配置。
-      </div>
-      <n-space vertical>
-        <n-space align="center">
+      <n-space vertical :size="8">
+        <div class="status-hint">
+          需要在上方网络配置中启用 VPN Portal 后再获取配置。
+        </div>
+        <n-space align="center" :size="8">
           <n-button size="small" :loading="vpnPortalLoading" @click="loadVPNPortalConfig">获取配置</n-button>
           <n-button size="small" :disabled="!vpnPortal.config" @click="copyVPNPortalConfig">复制</n-button>
         </n-space>

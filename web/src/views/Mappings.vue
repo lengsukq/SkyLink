@@ -5,10 +5,10 @@
       description="管理域名到后端服务的映射，可选配合 Cloudflare CNAME 一键创建。CF 状态基于 Cloudflare 页「获取最新」的缓存，若未同步请先到 Cloudflare 页拉取。"
     >
       <template #actions>
-        <n-space>
-          <n-button type="primary" @click="showAdd = true">添加映射</n-button>
-          <n-button @click="openOneClick">一键映射（含 CF CNAME）</n-button>
-          <n-button @click="load">刷新</n-button>
+        <n-space wrap :size="8">
+          <n-button type="primary" size="small" @click="showAdd = true">添加映射</n-button>
+          <n-button size="small" @click="openOneClick">一键映射（含 CF CNAME）</n-button>
+          <n-button size="small" @click="load">刷新</n-button>
         </n-space>
       </template>
     </page-header>
@@ -188,7 +188,7 @@ const meshPort = ref(3000)
 const meshSelectedIpEdit = ref(null)
 const meshPortEdit = ref(3000)
 
-const settings = ref<{ frp_cname_target?: string }>({})
+const settings = ref({ frp_cname_target: '' })
 
 const frpCnameTarget = computed(() => (settings.value.frp_cname_target || '').trim())
 

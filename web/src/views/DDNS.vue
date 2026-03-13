@@ -1,17 +1,20 @@
 <template>
   <div>
+    <page-header
+      title="DDNS"
+      description="查看并管理定时更新的 Cloudflare DDNS 任务，可快速查看当前公网 IP。"
+    />
     <n-card class="page-section page-card">
-      <n-space vertical>
-        <n-h1>DDNS</n-h1>
-        <n-space align="center">
-          <n-button @click="load">刷新</n-button>
-          <n-button @click="loadPublicIP">当前公网 IP</n-button>
-          <n-space v-if="publicIPv4 || publicIPv6" vertical :size="4">
+      <n-space vertical :size="12">
+        <n-space align="center" wrap :size="8">
+          <n-button size="small" @click="load">刷新</n-button>
+          <n-button size="small" @click="loadPublicIP">当前公网 IP</n-button>
+          <n-space v-if="publicIPv4 || publicIPv6" vertical :size="2" class="ddns-ip-hint">
             <span v-if="publicIPv4">IPv4: {{ publicIPv4 }}</span>
             <span v-if="publicIPv6">IPv6: {{ publicIPv6 }}</span>
           </n-space>
         </n-space>
-        <n-data-table :columns="columns" :data="list" :bordered="false" />
+        <n-data-table :columns="columns" :data="list" :bordered="false" size="small" />
       </n-space>
     </n-card>
   </div>
@@ -19,7 +22,8 @@
 
 <script setup>
 import { ref, h, onMounted } from 'vue'
-import { NButton, NPopconfirm, NTag, NDataTable, NSpace, NH1, NCard } from 'naive-ui'
+import { NButton, NPopconfirm, NTag, NDataTable, NSpace, NCard } from 'naive-ui'
+import PageHeader from '../components/PageHeader.vue'
 import api from '../api/client'
 
 const list = ref([])

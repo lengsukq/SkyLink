@@ -4,7 +4,7 @@
       title="设置"
       description="管理控制台登录密码，以及一键映射时的默认 Cloudflare / FRP 配置。"
     />
-    <n-grid cols="1 s:1 m:2 l:2" x-gap="16" y-gap="16" class="page-section">
+    <n-grid cols="1 s:1 m:2 l:2 xl:3" x-gap="16" y-gap="16" class="page-section">
       <n-gi>
         <n-card title="管理密码" class="page-card">
           <n-form :model="pwForm" label-placement="left" label-width="100">
@@ -20,7 +20,7 @@
             <n-button :disabled="loading || defaultsSaving" @click="logout">退出登录</n-button>
           </n-space>
           <p class="settings-hint">
-            修改成功后会自动更新本地保存的登录密码，下次访问将直接使用新密码登录。
+            修改成功后会自动更新本地保存的登录密码。
           </p>
         </n-card>
       </n-gi>
@@ -39,22 +39,22 @@
             <n-button type="primary" :loading="defaultsSaving" @click="saveDefaults">保存</n-button>
           </n-space>
           <p class="settings-hint">
-            一键映射功能会在 Cloudflare 中创建指向此 FRP 固定域名的 CNAME 记录；如未在此处配置，将无法使用一键映射创建 CNAME。
+            一键映射会在 Cloudflare 中创建指向此 FRP 固定域名的 CNAME 记录。
           </p>
         </n-card>
       </n-gi>
     </n-grid>
 
     <n-card title="Cloudflare 账号管理" class="page-section page-card">
-      <n-space vertical>
-        <p class="settings-hint" style="margin: 0 0 12px 0">
-          当前使用的账号请在页面右上角切换。在此可新增、编辑或删除账号。
-        </p>
+        <n-space vertical>
+          <p class="settings-hint settings-hint--inline">
+            当前使用的账号请在页面右上角切换，可在此新增、编辑或删除账号。
+          </p>
         <n-space align="center">
           <n-button size="small" :loading="accountsLoading" @click="loadAccounts">刷新</n-button>
           <n-button size="small" type="primary" @click="openCreateAccount">新增账号</n-button>
         </n-space>
-        <n-data-table :columns="accountColumns" :data="accounts" :bordered="false" />
+        <n-data-table :columns="accountColumns" :data="accounts" :bordered="false" size="small" />
       </n-space>
     </n-card>
 
@@ -201,8 +201,12 @@ onMounted(async () => {
 <style>
 .settings-hint {
   color: #666;
-  font-size: 12px;
-  margin-top: 8px;
-  line-height: 1.6;
+  font-size: 11px;
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
+.settings-hint--inline {
+  margin: 0 0 8px 0;
 }
 </style>
