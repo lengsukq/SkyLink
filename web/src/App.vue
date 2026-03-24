@@ -102,11 +102,9 @@ const isWindows = ref(false)
 const navItems = computed(() => [
   { path: '/dashboard', label: '仪表盘' },
   { path: '/mappings', label: '映射' },
-  { path: '/cloudflare', label: 'Cloudflare' },
-  { path: '/ddns', label: 'DDNS' },
+  { path: '/cloudflare-center', label: 'Cloudflare' },
   { path: '/easytier', label: 'EasyTier' },
-  ...(isWindows.value ? [{ path: '/webdev', label: 'WebDAV' }] : []),
-  ...(isWindows.value ? [{ path: '/smb', label: 'SMB' }] : []),
+  ...(isWindows.value ? [{ path: '/windows-tools', label: 'Windows 工具' }] : []),
   { path: '/settings', label: '设置' },
 ])
 
@@ -130,10 +128,10 @@ function go(path) {
 }
 
 function onClickManageAccounts() {
-  if (route.path !== '/cloudflare') {
-    router.push({ path: '/cloudflare', query: { manage: '1' } })
+  if (route.path !== '/cloudflare-center') {
+    router.push({ path: '/cloudflare-center', query: { manage: '1' } })
   } else {
-    router.push({ path: '/cloudflare', query: { manage: String(Date.now()) } })
+    router.push({ path: '/cloudflare-center', query: { manage: String(Date.now()) } })
   }
 }
 

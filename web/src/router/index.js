@@ -5,11 +5,13 @@ const routes = [
   { path: '/', redirect: '/dashboard' },
   { path: '/dashboard', name: 'Dashboard', component: () => import('../views/Dashboard.vue') },
   { path: '/mappings', name: 'Mappings', component: () => import('../views/Mappings.vue') },
-  { path: '/cloudflare', name: 'Cloudflare', component: () => import('../views/Cloudflare.vue') },
-  { path: '/ddns', name: 'DDNS', component: () => import('../views/DDNS.vue') },
+  { path: '/cloudflare-center', name: 'CloudflareCenter', component: () => import('../views/CloudflareCenter.vue') },
+  { path: '/cloudflare', redirect: '/cloudflare-center' },
+  { path: '/ddns', redirect: '/cloudflare-center' },
   { path: '/easytier', name: 'EasyTier', component: () => import('../views/EasyTier.vue') },
-  { path: '/webdev', name: 'WebDAV', component: () => import('../views/WebDev.vue') },
-  { path: '/smb', name: 'SMB', component: () => import('../views/Smb.vue') },
+  { path: '/windows-tools', name: 'WindowsTools', component: () => import('../views/WindowsTools.vue') },
+  { path: '/webdev', redirect: '/windows-tools' },
+  { path: '/smb', redirect: '/windows-tools' },
   { path: '/settings', name: 'Settings', component: () => import('../views/Settings.vue') },
 ]
 
