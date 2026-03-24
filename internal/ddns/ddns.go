@@ -11,8 +11,8 @@ import (
 
 const (
 	DefaultIntervalMin = 10
-	PublicIPTimeout   = 30 * time.Second
-	TickInterval      = time.Minute
+	PublicIPTimeout    = 30 * time.Second
+	TickInterval       = time.Minute
 )
 
 // IPv4 公网 IP 获取接口
@@ -102,13 +102,13 @@ const RecordTypeAAAA = "AAAA"
 
 // DDNSItem 一条需要更新的 DDNS 配置（由调用方从 store 取）
 type DDNSItem struct {
-	ID           int64
-	CFAccountID  int64  // 所属 Cloudflare 账号，用于按账号取 API 客户端
-	ZoneID       string
-	RecordName   string
-	RecordID     string
-	RecordType   string // "A" 或 "AAAA"
-	IntervalMin  int
+	ID          int64
+	CFAccountID int64 // 所属 Cloudflare 账号，用于按账号取 API 客户端
+	ZoneID      string
+	RecordName  string
+	RecordID    string
+	RecordType  string // "A" 或 "AAAA"
+	IntervalMin int
 }
 
 // Updater 根据 store 中的 DDNS 配置，定时更新 CF A 记录

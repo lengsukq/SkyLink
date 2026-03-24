@@ -27,8 +27,8 @@ func (s *Server) getSettings(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"frp_cname_target":       strings.TrimSpace(frp),
-		"cf_cname_proxied":       parseBoolDefault(proxied, true),
+		"frp_cname_target":      strings.TrimSpace(frp),
+		"cf_cname_proxied":      parseBoolDefault(proxied, true),
 		"cf_current_account_id": cfAccountID,
 	})
 }
@@ -87,4 +87,3 @@ func formatBool(b bool) string {
 	}
 	return "false"
 }
-

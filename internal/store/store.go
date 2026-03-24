@@ -50,7 +50,47 @@ CREATE TABLE IF NOT EXISTS ddns_config (
 	UNIQUE(zone_id, record_name, record_type)
 );
 
+CREATE TABLE IF NOT EXISTS webdev_services (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	name TEXT NOT NULL UNIQUE,
+	command TEXT NOT NULL,
+	work_dir TEXT NOT NULL DEFAULT '',
+	env TEXT NOT NULL DEFAULT '',
+	health_type TEXT NOT NULL DEFAULT 'http',
+	health_target TEXT NOT NULL DEFAULT '',
+	health_timeout INTEGER NOT NULL DEFAULT 3000,
+	created_at INTEGER NOT NULL,
+	updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS webdav_mappings (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	name TEXT NOT NULL UNIQUE,
+	local_path TEXT NOT NULL,
+	username TEXT NOT NULL,
+	password TEXT NOT NULL,
+	enabled INTEGER NOT NULL DEFAULT 1,
+	read_only INTEGER NOT NULL DEFAULT 0,
+	created_at INTEGER NOT NULL,
+	updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS smb_mappings (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	name TEXT NOT NULL UNIQUE,
+	local_path TEXT NOT NULL,
+	share_name TEXT NOT NULL UNIQUE,
+	enabled INTEGER NOT NULL DEFAULT 1,
+	read_only INTEGER NOT NULL DEFAULT 0,
+	created_at INTEGER NOT NULL,
+	updated_at INTEGER NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_mappings_host ON mappings(host);
+CREATE INDEX IF NOT EXISTS idx_webdev_services_name ON webdev_services(name);
+CREATE INDEX IF NOT EXISTS idx_webdav_mappings_name ON webdav_mappings(name);
+CREATE INDEX IF NOT EXISTS idx_smb_mappings_name ON smb_mappings(name);
+CREATE INDEX IF NOT EXISTS idx_smb_mappings_share_name ON smb_mappings(share_name);
 `
 
 // Store SQLite 存储

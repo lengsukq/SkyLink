@@ -44,12 +44,12 @@ type DaemonManager interface {
 }
 
 type daemonManager struct {
-	mu           sync.Mutex
-	cmd          *exec.Cmd
-	state        DaemonState
-	lastEnvFile  string
-	lastWorkDir  string
-	logBuf       *daemonLogBuffer
+	mu          sync.Mutex
+	cmd         *exec.Cmd
+	state       DaemonState
+	lastEnvFile string
+	lastWorkDir string
+	logBuf      *daemonLogBuffer
 }
 
 // daemonLogBuffer 有界缓冲区，保留守护进程 stdout/stderr 的最近输出。
@@ -268,5 +268,3 @@ func splitEnvLine(line string) (key, value string, ok bool) {
 	value = strings.Trim(value, `"'`)
 	return key, value, true
 }
-
-

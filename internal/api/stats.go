@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"runtime"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -21,6 +22,7 @@ func (s *Server) stats(c *gin.Context) {
 	easytierEnabled := false
 	easytierHasRuntime := false
 	easytierDaemonRunning := false
+	easytierRunningCount := 0
 
 	if cfg, err := s.store.GetEasyTierConfig(); err == nil && cfg != nil {
 		easytierEnabled = cfg.Enabled
@@ -33,9 +35,14 @@ func (s *Server) stats(c *gin.Context) {
 		}
 	}
 
-	if s.easyTierDaemon != nil && s.easyTierCfg != nil && s.easyTierCfg.DaemonEnabled {
-		state := s.easyTierDaemon.Status()
-		easytierDaemonRunning = state.Running
+	if s.easyTierDaemons != nil && s.easyTierCfg != nil && s.easyTierCfg.DaemonEnabled {
+		all := s.easyTierDaemons.StatusAll()
+		for _, state := range all {
+			if state.Running {
+				easytierDaemonRunning = true
+				easytierRunningCount++
+			}
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -44,6 +51,8 @@ func (s *Server) stats(c *gin.Context) {
 		"cf_accounts_count":       cfAccountsCount,
 		"easytier_enabled":        easytierEnabled,
 		"easytier_daemon_running": easytierDaemonRunning,
+		"easytier_running_count":  easytierRunningCount,
 		"easytier_has_runtime":    easytierHasRuntime,
+		"is_windows":              runtime.GOOS == "windows",
 	})
 }

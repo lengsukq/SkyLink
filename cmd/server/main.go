@@ -22,6 +22,10 @@ import (
 )
 
 func main() {
+	if err := ensureElevatedOnWindows(); err != nil {
+		log.Fatal("elevation:", err)
+	}
+
 	configPath := flag.String("config", "", "path to config yaml")
 	flag.Parse()
 
@@ -54,11 +58,12 @@ func main() {
 		frontendFS = nil
 	}
 	easyTierEnvPath := filepath.Join(filepath.Dir(appCfg.DBPath), "easytier.env")
-	daemonManager := easytier.NewDaemonManager()
+	daemonManager := easytier.NewMultiDaemonManager()
 	runtimeDownloader := easytier.NewRuntimeDownloader(easyTierCfg.RuntimeDir)
 	srv := api.New(st, pr, nil, frontendFS, easyTierEnvPath, daemonManager, easyTierCfg, runtimeDownloader)
 	adminHandler := srv.Handler()
 	defer srv.StopDDNS()
+	defer srv.StopEasyTierDaemon()
 
 	proxyPort := appCfg.ProxyPort
 	if proxyPort <= 0 {
@@ -81,6 +86,7 @@ func main() {
 			log.Fatal("admin server:", err)
 		}
 	}()
+	go openAdminUI(adminPort)
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)

@@ -22,8 +22,8 @@ type DNSRecord struct {
 
 // dnsListResponse 列表响应（含分页信息）
 type dnsListResponse struct {
-	Result     []DNSRecord   `json:"result"`
-	ResultInfo *resultInfo  `json:"result_info,omitempty"`
+	Result     []DNSRecord `json:"result"`
+	ResultInfo *resultInfo `json:"result_info,omitempty"`
 }
 
 type resultInfo struct {

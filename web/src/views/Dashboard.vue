@@ -35,7 +35,7 @@
             <n-space align="center">
               <span>Daemon：</span>
               <n-tag :type="stats.easytier_daemon_running ? 'success' : 'default'" size="small">
-                {{ stats.easytier_daemon_running ? '运行中' : '未运行' }}
+                {{ stats.easytier_daemon_running ? `运行中 (${stats.easytier_running_count || 0})` : '未运行' }}
               </n-tag>
             </n-space>
             <n-space align="center">
@@ -65,6 +65,7 @@ const stats = ref({
   cf_accounts_count: 0,
   easytier_enabled: false,
   easytier_daemon_running: false,
+  easytier_running_count: 0,
   easytier_has_runtime: false,
 })
 

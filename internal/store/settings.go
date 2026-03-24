@@ -22,4 +22,3 @@ func (s *Store) SetSetting(key, value string) error {
 	)
 	return err
 }
-

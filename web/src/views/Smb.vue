@@ -1,0 +1,338 @@
+<template>
+  <div>
+    <page-header
+      title="SMB 映射"
+      description="管理 Windows SMB 共享映射（使用系统账户认证）。"
+    >
+      <template #actions>
+        <n-space :size="8">
+          <n-button type="primary" size="small" @click="openCreate">添加映射</n-button>
+          <n-button size="small" :loading="syncingLocal" @click="syncLocalMappings">同步本地 SMB 映射</n-button>
+          <n-button size="small" @click="loadServices">刷新</n-button>
+        </n-space>
+      </template>
+    </page-header>
+
+    <n-alert type="info" class="page-section">
+      SMB 使用 Windows 本机账户认证，不在 SkyLink 中维护独立 SMB 密码。
+    </n-alert>
+
+    <n-card class="page-section page-card">
+      <n-spin :show="loading">
+        <n-data-table :columns="columns" :data="list" :bordered="false" :single-line="false" />
+      </n-spin>
+    </n-card>
+
+    <n-modal
+      v-model:show="showEditor"
+      preset="dialog"
+      :title="editingId ? '编辑 SMB 映射' : '添加 SMB 映射'"
+      positive-text="保存"
+      @positive-click="onSave"
+    >
+      <n-form :model="form" label-placement="left" label-width="96" style="padding: 16px 0">
+        <n-form-item label="名称" required>
+          <n-input v-model:value="form.name" placeholder="例如：documents-smb" />
+        </n-form-item>
+        <n-form-item label="共享名" required>
+          <n-input v-model:value="form.share_name" placeholder="例如：docs" />
+        </n-form-item>
+        <n-form-item label="本地目录" required>
+          <n-space vertical :size="6" style="width: 100%">
+            <n-space :size="8">
+              <n-input v-model:value="form.local_path" placeholder="例如：C:\\Users\\hey\\Documents" />
+              <n-button size="small" @click="openDirectoryPicker">选择文件夹</n-button>
+            </n-space>
+            <span style="font-size: 12px; color: #666">
+              浏览器模式通常无法直接读取绝对路径；若未自动填充完整路径，请手动输入。
+            </span>
+            <input
+              ref="directoryInputRef"
+              type="file"
+              webkitdirectory
+              directory
+              multiple
+              style="display: none"
+              @change="onDirectoryPicked"
+            />
+          </n-space>
+        </n-form-item>
+        <n-form-item label="启用">
+          <n-select v-model:value="form.enabled" :options="enabledOptions" />
+        </n-form-item>
+        <n-form-item label="写入模式">
+          <n-select v-model:value="form.read_only" :options="readOnlyOptions" />
+        </n-form-item>
+      </n-form>
+    </n-modal>
+  </div>
+</template>
+
+<script setup>
+import { computed, h, onMounted, ref } from 'vue'
+import {
+  NAlert,
+  NButton,
+  NCard,
+  NDataTable,
+  NForm,
+  NFormItem,
+  NInput,
+  NModal,
+  NPopconfirm,
+  NSelect,
+  NSpace,
+  NSpin,
+  NTag,
+} from 'naive-ui'
+import api from '../api/client'
+import PageHeader from '../components/PageHeader.vue'
+import { notifyError, notifySuccess } from '../ui/notify'
+
+const loading = ref(false)
+const list = ref([])
+const showEditor = ref(false)
+const editingId = ref(null)
+const form = ref(newForm())
+const directoryInputRef = ref(null)
+const syncingLocal = ref(false)
+
+const enabledOptions = [
+  { label: '启用', value: true },
+  { label: '停用', value: false },
+]
+const readOnlyOptions = [
+  { label: '读写', value: false },
+  { label: '只读', value: true },
+]
+
+const columns = computed(() => [
+  { title: '名称', key: 'name', width: 140 },
+  { title: '共享名', key: 'share_name', width: 120 },
+  { title: '本地目录', key: 'local_path', ellipsis: true },
+  {
+    title: '状态',
+    key: 'enabled',
+    width: 100,
+    render: (row) =>
+      h(
+        NTag,
+        { type: row.enabled ? 'success' : 'default', size: 'small' },
+        { default: () => (row.enabled ? '启用' : '停用') }
+      ),
+  },
+  {
+    title: '访问路径',
+    key: 'unc',
+    width: 300,
+    render: (row) => {
+      const unc = `\\\\${location.hostname}\\${row.share_name}`
+      return h(NSpace, { size: 6, align: 'center', wrapItem: false }, {
+        default: () => [
+          h('span', {
+            style: {
+              display: 'inline-block',
+              maxWidth: '250px',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            },
+            title: unc,
+          }, unc),
+          h(
+            NButton,
+            { size: 'tiny', quaternary: true, title: '复制路径', onClick: () => copyText(unc) },
+            { default: () => '📋' }
+          ),
+        ],
+      })
+    },
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 320,
+    render: (row) =>
+      h(NSpace, { size: 4 }, {
+        default: () => [
+          h(NButton, { size: 'small', onClick: () => onToggleEnabled(row, !row.enabled) }, { default: () => (row.enabled ? '停用' : '启用') }),
+          h(NButton, { size: 'small', onClick: () => onHealth(row) }, { default: () => '共享检查' }),
+          h(NButton, { size: 'small', onClick: () => openEdit(row) }, { default: () => '编辑' }),
+          h(
+            NPopconfirm,
+            { onPositiveClick: () => onDelete(row.id), positiveText: '删除', negativeText: '取消' },
+            { trigger: () => h(NButton, { size: 'small', type: 'error' }, { default: () => '删除' }), default: () => '确认删除？' }
+          ),
+        ],
+      }),
+  },
+])
+
+function newForm() {
+  return {
+    name: '',
+    share_name: '',
+    local_path: '',
+    enabled: true,
+    read_only: false,
+  }
+}
+
+async function loadServices() {
+  loading.value = true
+  try {
+    const { data } = await api.get('/smb/mappings')
+    list.value = data?.list || []
+  } catch (e) {
+    notifyError('加载失败', e?.response?.data?.error || e?.message || '加载 SMB 列表失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+function openCreate() {
+  editingId.value = null
+  form.value = newForm()
+  showEditor.value = true
+}
+
+function openEdit(row) {
+  editingId.value = row.id
+  form.value = {
+    name: row.name || '',
+    share_name: row.share_name || '',
+    local_path: row.local_path || '',
+    enabled: !!row.enabled,
+    read_only: !!row.read_only,
+  }
+  showEditor.value = true
+}
+
+function openDirectoryPicker() {
+  const input = directoryInputRef.value
+  if (!input) {
+    notifyError('当前环境不支持', '无法打开目录选择器，请手动填写本地目录路径。')
+    return
+  }
+  input.value = ''
+  input.click()
+}
+
+function onDirectoryPicked(event) {
+  const input = event?.target
+  const files = input?.files
+  if (!files || files.length === 0) return
+
+  const first = files[0]
+  const relativePath = first.webkitRelativePath || ''
+  const firstSegment = relativePath.split('/')[0] || ''
+
+  const absoluteFilePath = typeof first.path === 'string' ? first.path : ''
+  if (absoluteFilePath && relativePath) {
+    const normalizedAbs = absoluteFilePath.replace(/\\/g, '/')
+    const normalizedRel = relativePath.replace(/\\/g, '/')
+    const suffix = `/${normalizedRel}`
+    if (normalizedAbs.endsWith(suffix)) {
+      const base = normalizedAbs.slice(0, normalizedAbs.length - suffix.length)
+      form.value.local_path = base.replace(/\//g, '\\')
+      notifySuccess('已填充目录', `已自动填充：${form.value.local_path}`)
+      return
+    }
+  }
+
+  if (firstSegment) {
+    if (!form.value.local_path.trim()) {
+      form.value.local_path = firstSegment
+    }
+    notifyError('无法获取绝对路径', '当前浏览器受限，已尝试提取目录名，请手动补全本地绝对路径。')
+    return
+  }
+
+  notifyError('选择失败', '未能读取目录信息，请手动填写本地目录路径。')
+}
+
+async function onSave() {
+  if (!form.value.name.trim() || !form.value.share_name.trim() || !form.value.local_path.trim()) {
+    notifyError('参数错误', '名称、共享名、本地目录是必填项')
+    return false
+  }
+  try {
+    if (editingId.value) {
+      await api.put(`/smb/mappings/${editingId.value}`, form.value)
+    } else {
+      await api.post('/smb/mappings', form.value)
+    }
+    notifySuccess('已保存', 'SMB 映射配置已更新')
+    await loadServices()
+    return true
+  } catch (e) {
+    notifyError('保存失败', e?.response?.data?.error || e?.message || '保存失败')
+    return false
+  }
+}
+
+async function onHealth(row) {
+  try {
+    const { data } = await api.get(`/smb/mappings/${row.id}/health`)
+    if (data?.ok) notifySuccess('共享检查通过', data?.message || '')
+    else notifyError('共享检查失败', data?.message || '共享不可用')
+  } catch (e) {
+    notifyError('共享检查失败', e?.response?.data?.error || e?.message || '请求失败')
+  }
+}
+
+async function onDelete(id) {
+  try {
+    await api.delete(`/smb/mappings/${id}`)
+    notifySuccess('已删除', 'SMB 映射已删除')
+    await loadServices()
+  } catch (e) {
+    notifyError('删除失败', e?.response?.data?.error || e?.message || '删除失败')
+  }
+}
+
+async function onToggleEnabled(row, enabled) {
+  try {
+    const endpoint = enabled ? 'start' : 'stop'
+    await api.post(`/smb/mappings/${row.id}/${endpoint}`)
+    notifySuccess(enabled ? '已启用' : '已停用', '')
+    await loadServices()
+  } catch (e) {
+    notifyError('操作失败', e?.response?.data?.error || e?.message || '操作失败')
+  }
+}
+
+async function syncLocalMappings() {
+  syncingLocal.value = true
+  try {
+    const { data } = await api.post('/smb/mappings/sync-local')
+    const added = Number(data?.added || 0)
+    const updated = Number(data?.updated || 0)
+    const skipped = Number(data?.skipped || 0)
+    const errors = Array.isArray(data?.errors) ? data.errors : []
+    if (errors.length > 0) {
+      notifyError('同步完成（部分失败）', `新增 ${added}，更新 ${updated}，跳过 ${skipped}，失败 ${errors.length}`)
+    } else {
+      notifySuccess('同步完成', `新增 ${added}，更新 ${updated}，跳过 ${skipped}`)
+    }
+    await loadServices()
+  } catch (e) {
+    notifyError('同步失败', e?.response?.data?.error || e?.message || '同步本地 SMB 映射失败')
+  } finally {
+    syncingLocal.value = false
+  }
+}
+
+async function copyText(value) {
+  try {
+    await navigator.clipboard.writeText(value)
+    notifySuccess('已复制', value)
+  } catch (_) {
+    notifyError('复制失败', '请手动复制路径')
+  }
+}
+
+onMounted(async () => {
+  await loadServices()
+})
+</script>

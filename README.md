@@ -185,6 +185,13 @@ easytier:
    - 根据需要设置主机名（`hostname`）、公网发现节点（`external-node`）、子网代理（`proxy-networks`）、是否开启 DHCP 以及 VPN Portal。
 5. 点击「保存配置」。配置会写入内部数据库，并在需要时写入 `./data/easytier.env` 以供外部进程复用。
 6. 在「状态」卡片中使用“启动 / 停止 / 重启”按钮控制 EasyTier 守护进程，并确认本机 mesh IP 与 peers / 路由是否正常。
+
+### EasyTier 多实例（Profiles）
+
+- 现在支持在 EasyTier 页面创建多个配置实例（profiles），每个实例可独立配置 `network_name`、`peers`、`rpc_portal`、`image_tag` 等参数。
+- 每个 profile 可单独执行 Daemon 启动/停止/重启，并独立查看状态与日志。
+- 历史单配置会在首次读取时自动迁移为 `default` profile，原有 `/api/easytier/config` 与 `/api/easytier/daemon/*` 接口继续可用（映射到当前 active profile）。
+- 为避免冲突，启动前会校验 profile 间的 `rpc_portal` 与 `env_file_path` 是否重复。
 7. 在「映射」添加/编辑时，可使用「从 mesh 选择」下拉本机或对等节点 IP，填入端口后自动生成后端地址（如 `http://10.144.144.2:3000`）。
 
 ### 版本与高级配置

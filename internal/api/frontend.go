@@ -3,7 +3,7 @@ package api
 import (
 	"io/fs"
 	"net/http"
-	"path/filepath"
+	"path"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -15,17 +15,18 @@ func (s *Server) serveFrontend(c *gin.Context) {
 		c.Status(http.StatusNotFound)
 		return
 	}
-	path := c.Request.URL.Path
-	if path == "/" {
-		path = "/index.html"
+	requestPath := c.Request.URL.Path
+	if requestPath == "/" {
+		requestPath = "/index.html"
 	}
-	path = strings.TrimPrefix(path, "/")
-	if strings.Contains(path, "..") || filepath.Clean(path) != path {
+	requestPath = strings.TrimPrefix(requestPath, "/")
+	// URL path should be normalized with slash semantics across platforms.
+	if strings.Contains(requestPath, "..") || path.Clean(requestPath) != requestPath {
 		c.Status(http.StatusNotFound)
 		return
 	}
 	// staticFS 的根即为 web/dist 内容（由 main 传入 sub-FS）
-	data, err := fs.ReadFile(s.staticFS, path)
+	data, err := fs.ReadFile(s.staticFS, requestPath)
 	if err != nil {
 		data, err = fs.ReadFile(s.staticFS, "index.html")
 		if err != nil {
@@ -35,13 +36,13 @@ func (s *Server) serveFrontend(c *gin.Context) {
 	}
 	contentType := "application/octet-stream"
 	switch {
-	case strings.HasSuffix(path, ".html"):
+	case strings.HasSuffix(requestPath, ".html"):
 		contentType = "text/html; charset=utf-8"
-	case strings.HasSuffix(path, ".js"):
+	case strings.HasSuffix(requestPath, ".js"):
 		contentType = "application/javascript"
-	case strings.HasSuffix(path, ".css"):
+	case strings.HasSuffix(requestPath, ".css"):
 		contentType = "text/css"
-	case strings.HasSuffix(path, ".ico"):
+	case strings.HasSuffix(requestPath, ".ico"):
 		contentType = "image/x-icon"
 	}
 	c.Data(http.StatusOK, contentType, data)

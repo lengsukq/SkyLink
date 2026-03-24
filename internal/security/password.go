@@ -18,4 +18,3 @@ func GeneratePassword(n int) (string, error) {
 	// URL-safe, no padding
 	return base64.RawURLEncoding.EncodeToString(b)[:n], nil
 }
-

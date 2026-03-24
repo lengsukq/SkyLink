@@ -47,4 +47,3 @@ func (s *Server) changePassword(c *gin.Context) {
 	s.passwordHash.Store(string(hashed))
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
-

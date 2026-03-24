@@ -3,8 +3,8 @@ package store
 // Mapping 域名 -> 后端地址的映射（反代路由）
 type Mapping struct {
 	ID        int64  `json:"id"`
-	Host      string `json:"host"`       // 如 xx.yyy.com
-	Backend   string `json:"backend"`    // 如 http://127.0.0.1:3000
+	Host      string `json:"host"`    // 如 xx.yyy.com
+	Backend   string `json:"backend"` // 如 http://127.0.0.1:3000
 	CreatedAt int64  `json:"created_at"`
 }
 
@@ -15,7 +15,7 @@ type DDNSConfig struct {
 	ZoneID      string `json:"zone_id"`
 	RecordName  string `json:"record_name"`  // 如 @ 或 sub
 	RecordID    string `json:"record_id"`    // CF 记录 ID，更新时用
-	RecordType  string `json:"record_type"` // "A" 或 "AAAA"
+	RecordType  string `json:"record_type"`  // "A" 或 "AAAA"
 	IntervalMin int    `json:"interval_min"` // 更新间隔（分钟）
 	Enabled     bool   `json:"enabled"`
 	LastIP      string `json:"last_ip"`

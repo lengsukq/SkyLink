@@ -194,11 +194,15 @@ const frpCnameTarget = computed(() => (settings.value.frp_cname_target || '').tr
 
 async function loadMeshIps() {
   try {
-    const { data } = await api.get('/easytier/status')
+    const { data } = await api.get('/easytier/status/all')
     const ips = []
-    if (data?.self_ipv4) ips.push({ label: `${data.self_ipv4} (本机)`, value: data.self_ipv4 })
-    ;(data?.peers || []).forEach((p) => {
-      if (p.ipv4 && p.ipv4 !== data?.self_ipv4) ips.push({ label: p.ipv4, value: p.ipv4 })
+    ;(data?.profiles || []).forEach((item) => {
+      const st = item?.status
+      if (!item?.ok || !st) return
+      if (st?.self_ipv4) ips.push({ label: `${st.self_ipv4} (${item?.name || item?.id || '本机'})`, value: st.self_ipv4 })
+      ;(st?.peers || []).forEach((p) => {
+        if (p.ipv4 && p.ipv4 !== st?.self_ipv4) ips.push({ label: `${p.ipv4} (${item?.name || item?.id || 'peer'})`, value: p.ipv4 })
+      })
     })
     meshIpOptions.value = ips
   } catch (_) {

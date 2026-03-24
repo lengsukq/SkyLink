@@ -10,6 +10,21 @@
       ① 在「版本与运行时」选择版本与平台并下载 → ② 在「网络配置」填写网络名、密钥等并启用、保存 → ③ 在本卡片选择已下载版本并点击「启动」。
     </n-alert>
 
+    <n-card title="配置实例" class="page-section page-card">
+      <n-space align="center" wrap>
+        <n-select
+          v-model:value="activeProfileId"
+          :options="profileOptions"
+          placeholder="选择配置实例"
+          style="min-width: 240px"
+          @update:value="onProfileChange"
+        />
+        <n-input v-model:value="newProfileName" placeholder="新实例名称" style="width: 180px" />
+        <n-button size="small" @click="createProfile">新增实例</n-button>
+        <n-button size="small" :disabled="!canDeleteProfile" @click="deleteCurrentProfile">删除当前实例</n-button>
+      </n-space>
+    </n-card>
+
     <n-card title="状态" class="page-section page-card">
       <n-space vertical :size="12">
         <n-alert
@@ -396,6 +411,12 @@ const removingInstalledKey = ref('')
 const daemonLogs = ref('')
 const daemonLogsLoading = ref(false)
 const releasePortLoading = ref(false)
+const profiles = ref([])
+const activeProfileId = ref('')
+const newProfileName = ref('')
+
+const profileOptions = computed(() => profiles.value.map((p) => ({ label: p.name || p.id, value: p.id })))
+const canDeleteProfile = computed(() => profiles.value.length > 1 && !!activeProfileId.value)
 
 const aggregatedErrors = computed(() => {
   const list = []
@@ -565,6 +586,63 @@ async function loadConfig() {
     }
   } catch (_) {}
   await loadDaemonStatus()
+}
+
+async function loadProfiles() {
+  try {
+    const { data } = await api.get('/easytier/profiles')
+    profiles.value = data?.profiles || []
+    activeProfileId.value = data?.active_profile_id || profiles.value[0]?.id || ''
+  } catch (_) {
+    profiles.value = []
+    activeProfileId.value = ''
+  }
+}
+
+function profilePath(path) {
+  if (!activeProfileId.value) return `/easytier${path}`
+  return `/easytier/profiles/${activeProfileId.value}${path}`
+}
+
+async function onProfileChange(profileId) {
+  if (!profileId) return
+  try {
+    await api.put(`/easytier/profiles/active/${profileId}`)
+    await loadConfig()
+    await loadStatus()
+    await loadDaemonLogs()
+  } catch (e) {
+    notifyError('切换实例失败', e?.response?.data?.error || e?.message || '未知错误')
+  }
+}
+
+async function createProfile() {
+  const name = (newProfileName.value || '').trim()
+  if (!name) return
+  try {
+    const { data } = await api.post('/easytier/profiles', { name, config: { image_tag: form.image_tag || '' } })
+    newProfileName.value = ''
+    await loadProfiles()
+    if (data?.id) {
+      activeProfileId.value = data.id
+      await onProfileChange(data.id)
+    }
+  } catch (e) {
+    notifyError('新增实例失败', e?.response?.data?.error || e?.message || '未知错误')
+  }
+}
+
+async function deleteCurrentProfile() {
+  if (!canDeleteProfile.value) return
+  try {
+    await api.delete(`/easytier/profiles/${activeProfileId.value}`)
+    await loadProfiles()
+    if (activeProfileId.value) {
+      await onProfileChange(activeProfileId.value)
+    }
+  } catch (e) {
+    notifyError('删除实例失败', e?.response?.data?.error || e?.message || '未知错误')
+  }
 }
 
 async function loadPlatform() {
@@ -747,7 +825,7 @@ async function saveAndRestart() {
     await api.put('/easytier/config', form)
     await loadConfig()
     try {
-      const { data } = await api.post('/easytier/daemon/restart')
+      const { data } = await api.post(profilePath('/daemon/restart'))
       notifySuccess('已保存并重启', data?.message || '配置已保存，EasyTier 守护进程已重启。')
       await loadDaemonStatus()
       await loadStatus()
@@ -770,7 +848,7 @@ async function loadStatus() {
   statusLoading.value = true
   status.hint = ''
   try {
-    const { data } = await api.get('/easytier/status')
+    const { data } = await api.get(profilePath('/status'))
     status.ok = data?.ok ?? false
     status.error = data?.error || ''
     status.hint = data?.hint || ''
@@ -793,7 +871,7 @@ async function loadStatus() {
 
 async function loadDaemonStatus() {
   try {
-    const { data } = await api.get('/easytier/daemon/status')
+    const { data } = await api.get(profilePath('/daemon/status'))
     daemonStatus.running = !!data?.running
     daemonStatus.pid = data?.pid || 0
     daemonStatus.last_start_error = data?.last_start_error || ''
@@ -812,7 +890,7 @@ async function loadDaemonLogs() {
   if (!daemonModeEnabled.value) return
   daemonLogsLoading.value = true
   try {
-    const { data } = await api.get('/easytier/daemon/logs')
+    const { data } = await api.get(profilePath('/daemon/logs'))
     daemonLogs.value = data?.logs ?? ''
   } catch (_) {
     daemonLogs.value = ''
@@ -824,7 +902,7 @@ async function loadDaemonLogs() {
 async function startDaemon() {
   const imageTag = selectedVersion.value || form.image_tag || ''
   try {
-    const { data } = await api.post('/easytier/daemon/start', { image_tag: imageTag || undefined })
+    const { data } = await api.post(profilePath('/daemon/start'), { image_tag: imageTag || undefined })
     notifySuccess('已启动', data?.message || 'EasyTier daemon 已启动。')
     await loadDaemonStatus()
     await loadStatus()
@@ -840,7 +918,7 @@ async function startDaemon() {
 
 async function stopDaemon() {
   try {
-    const { data } = await api.post('/easytier/daemon/stop')
+    const { data } = await api.post(profilePath('/daemon/stop'))
     notifySuccess('已停止', data?.message || 'EasyTier daemon 已停止。')
     await loadDaemonStatus()
     await loadStatus()
@@ -851,7 +929,7 @@ async function stopDaemon() {
 async function restartDaemon() {
   const imageTag = selectedVersion.value || form.image_tag || ''
   try {
-    const { data } = await api.post('/easytier/daemon/restart', { image_tag: imageTag || undefined })
+    const { data } = await api.post(profilePath('/daemon/restart'), { image_tag: imageTag || undefined })
     notifySuccess('已重启', data?.message || 'EasyTier daemon 已重启。')
     await loadDaemonStatus()
     await loadStatus()
@@ -876,7 +954,7 @@ function startOrRestartDaemon() {
 async function releasePort() {
   releasePortLoading.value = true
   try {
-    const { data } = await api.post('/easytier/daemon/release-port')
+    const { data } = await api.post(profilePath('/daemon/release-port'))
     const msg = data?.message || '已解除端口占用。'
     if (data?.killed) {
       const portsStr = (data.ports_freed || []).length ? ` 端口 ${(data.ports_freed || []).join(', ')}` : ''
@@ -959,7 +1037,7 @@ async function removeRuntime() {
 async function loadVPNPortalConfig() {
   vpnPortalLoading.value = true
   try {
-    const { data } = await api.get('/easytier/vpn-portal')
+    const { data } = await api.get(profilePath('/vpn-portal'))
     vpnPortal.config = data?.config || ''
     vpnPortal.error = data?.error || ''
     if (!vpnPortal.config && !vpnPortal.error) {
@@ -1005,6 +1083,7 @@ function useLatestVersion() {
 }
 
 onMounted(async () => {
+  await loadProfiles()
   loadPlatform()
   await loadConfig()
   loadStatus()

@@ -24,4 +24,3 @@ func (s *Store) SetAdminPasswordHash(hash string) error {
 	)
 	return err
 }
-

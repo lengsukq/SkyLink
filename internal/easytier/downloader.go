@@ -27,8 +27,8 @@ type RuntimeDownloader struct {
 	runtimeDir string
 	httpClient *http.Client
 
-	mu        sync.Mutex
-	inFlight  map[string]*sync.Cond
+	mu       sync.Mutex
+	inFlight map[string]*sync.Cond
 }
 
 // NewRuntimeDownloader 创建一个新的 RuntimeDownloader。
@@ -554,4 +554,3 @@ func SupportedPlatformsWithLabels() []PlatformLabel {
 	}
 	return out
 }
-

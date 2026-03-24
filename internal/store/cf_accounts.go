@@ -82,4 +82,3 @@ func (s *Store) DeleteCFAccount(id int64) error {
 	_, err := s.db.Exec(`DELETE FROM cf_accounts WHERE id = ?`, id)
 	return err
 }
-

@@ -32,20 +32,20 @@ type Node struct {
 
 // Status 为 GET /api/easytier/status 的响应结构
 type Status struct {
-	OK          bool    `json:"ok"`
-	Error       string  `json:"error,omitempty"`
-	Version     string  `json:"version,omitempty"`
-	SelfIPv4    string  `json:"self_ipv4,omitempty"`
-	SelfHost    string  `json:"self_hostname,omitempty"`
-	Peers       []Peer  `json:"peers"`
-	Routes      []Route `json:"routes"`
+	OK       bool    `json:"ok"`
+	Error    string  `json:"error,omitempty"`
+	Version  string  `json:"version,omitempty"`
+	SelfIPv4 string  `json:"self_ipv4,omitempty"`
+	SelfHost string  `json:"self_hostname,omitempty"`
+	Peers    []Peer  `json:"peers"`
+	Routes   []Route `json:"routes"`
 }
 
 // VersionCheck 为 GET /api/easytier/version/check 的响应结构
 type VersionCheck struct {
-	CurrentVersion   string `json:"current_version"`
-	LatestVersion    string `json:"latest_version"`
-	UpdateAvailable  bool   `json:"update_available"`
-	ReleaseURL       string `json:"release_url,omitempty"`
-	ReleaseNotesURL  string `json:"release_notes_url,omitempty"`
+	CurrentVersion  string `json:"current_version"`
+	LatestVersion   string `json:"latest_version"`
+	UpdateAvailable bool   `json:"update_available"`
+	ReleaseURL      string `json:"release_url,omitempty"`
+	ReleaseNotesURL string `json:"release_notes_url,omitempty"`
 }

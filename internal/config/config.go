@@ -27,9 +27,9 @@ func Load(path string) (*App, *Cloudflare, *EasyTier, error) {
 		data, err := os.ReadFile(path)
 		if err == nil {
 			var file struct {
-				App     *App     `yaml:"app"`
-				CF      *Cloudflare `yaml:"cloudflare"`
-				EasyTier *EasyTier `yaml:"easytier"`
+				App      *App        `yaml:"app"`
+				CF       *Cloudflare `yaml:"cloudflare"`
+				EasyTier *EasyTier   `yaml:"easytier"`
 			}
 			if err := yaml.Unmarshal(data, &file); err == nil {
 				if file.App != nil {

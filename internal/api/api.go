@@ -47,21 +47,21 @@ type Server struct {
 	easyTierEnvPath string
 
 	// EasyTier daemon lifecycle (裸机场景，可选启用)
-	easyTierDaemon easytier.DaemonManager
-	easyTierCfg    *config.EasyTier
+	easyTierDaemons easytier.MultiDaemonManager
+	easyTierCfg     *config.EasyTier
 
 	// EasyTier runtime（自动下载 easytier-daemon）
 	easyTierRuntime *easytier.RuntimeDownloader
 }
 
 // New 创建 API 服务；staticFS 可为 nil（不提供 GUI 时）；easyTierEnvPath 为 EasyTier env 文件默认路径，空则仅从 store 读配置不写文件
-func New(st *store.Store, pr *proxy.Proxy, cf *cloudflare.Client, staticFS fs.FS, easyTierEnvPath string, etDaemon easytier.DaemonManager, etCfg *config.EasyTier, etRuntime *easytier.RuntimeDownloader) *Server {
+func New(st *store.Store, pr *proxy.Proxy, cf *cloudflare.Client, staticFS fs.FS, easyTierEnvPath string, etDaemons easytier.MultiDaemonManager, etCfg *config.EasyTier, etRuntime *easytier.RuntimeDownloader) *Server {
 	s := &Server{
-		store:          st,
-		proxy:          pr,
-		staticFS:       staticFS,
+		store:           st,
+		proxy:           pr,
+		staticFS:        staticFS,
 		easyTierEnvPath: easyTierEnvPath,
-		easyTierDaemon:  etDaemon,
+		easyTierDaemons: etDaemons,
 		easyTierCfg:     etCfg,
 		easyTierRuntime: etRuntime,
 	}
@@ -93,7 +93,7 @@ func New(st *store.Store, pr *proxy.Proxy, cf *cloudflare.Client, staticFS fs.FS
 	// Try to initialize current CF account ID from settings if present.
 	if v, err := st.GetSetting("cf.current_account_id"); err != nil {
 		log.Printf("load current CF account id failed: %v", err)
-	} else 	if v != "" {
+	} else if v != "" {
 		if id, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil && id > 0 {
 			s.currentCFAccountID.Store(id)
 		}
@@ -160,6 +160,21 @@ func (s *Server) Handler() http.Handler {
 	// EasyTier
 	r.GET("/api/easytier/config", s.getEasyTierConfig)
 	r.PUT("/api/easytier/config", s.putEasyTierConfig)
+	r.GET("/api/easytier/profiles", s.listEasyTierProfiles)
+	r.POST("/api/easytier/profiles", s.createEasyTierProfile)
+	r.PUT("/api/easytier/profiles/:id", s.updateEasyTierProfile)
+	r.DELETE("/api/easytier/profiles/:id", s.deleteEasyTierProfile)
+	r.PUT("/api/easytier/profiles/active/:id", s.setEasyTierActiveProfile)
+	r.GET("/api/easytier/profiles/:id/status", s.getEasyTierStatusByProfile)
+	r.GET("/api/easytier/profiles/:id/version", s.getEasyTierVersionByProfile)
+	r.GET("/api/easytier/profiles/:id/vpn-portal", s.getEasyTierVPNPortalByProfile)
+	r.POST("/api/easytier/profiles/:id/daemon/start", s.postEasyTierDaemonStartByProfile)
+	r.POST("/api/easytier/profiles/:id/daemon/stop", s.postEasyTierDaemonStopByProfile)
+	r.POST("/api/easytier/profiles/:id/daemon/restart", s.postEasyTierDaemonRestartByProfile)
+	r.GET("/api/easytier/profiles/:id/daemon/status", s.getEasyTierDaemonStatusByProfile)
+	r.GET("/api/easytier/profiles/:id/daemon/logs", s.getEasyTierDaemonLogsByProfile)
+	r.POST("/api/easytier/profiles/:id/daemon/release-port", s.postEasyTierDaemonReleasePortByProfile)
+	r.GET("/api/easytier/status/all", s.getEasyTierStatuses)
 	r.GET("/api/easytier/settings", s.getEasyTierSettings)
 	r.PUT("/api/easytier/settings", s.updateEasyTierSettings)
 	r.GET("/api/easytier/status", s.getEasyTierStatus)
@@ -180,6 +195,28 @@ func (s *Server) Handler() http.Handler {
 	r.GET("/api/easytier/daemon/status", s.getEasyTierDaemonStatus)
 	r.GET("/api/easytier/daemon/logs", s.getEasyTierDaemonLogs)
 
+	// WebDAV mappings + file route
+	r.GET("/api/webdav/mappings", s.listWebDevServices)
+	r.POST("/api/webdav/mappings", s.addWebDevService)
+	r.PUT("/api/webdav/mappings/:id", s.updateWebDevService)
+	r.DELETE("/api/webdav/mappings/:id", s.deleteWebDevService)
+	r.POST("/api/webdav/mappings/:id/start", s.startWebDevService)
+	r.POST("/api/webdav/mappings/:id/stop", s.stopWebDevService)
+	r.POST("/api/webdav/mappings/:id/restart", s.restartWebDevService)
+	r.GET("/api/webdav/mappings/:id/health", s.healthWebDevService)
+	r.Any("/api/webdav/:id/*davPath", s.serveWebDAVByID)
+
+	// SMB mappings
+	r.GET("/api/smb/mappings", s.listSMBServices)
+	r.POST("/api/smb/mappings/sync-local", s.syncLocalSMBServices)
+	r.POST("/api/smb/mappings", s.addSMBService)
+	r.PUT("/api/smb/mappings/:id", s.updateSMBService)
+	r.DELETE("/api/smb/mappings/:id", s.deleteSMBService)
+	r.POST("/api/smb/mappings/:id/start", s.startSMBService)
+	r.POST("/api/smb/mappings/:id/stop", s.stopSMBService)
+	r.POST("/api/smb/mappings/:id/restart", s.restartSMBService)
+	r.GET("/api/smb/mappings/:id/health", s.healthSMBService)
+
 	// 其它路径回退到内嵌静态前端（SPA）
 	r.NoRoute(s.serveFrontend)
 	return r
@@ -189,6 +226,12 @@ func (s *Server) authMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 静态资源与前端路由不需要鉴权；只保护 /api/*
 		if !strings.HasPrefix(c.Request.URL.Path, "/api/") {
+			c.Next()
+			return
+		}
+		// WebDAV 文件路由采用独立 Basic Auth；mapping 配置接口仍走 Bearer 鉴权。
+		if strings.HasPrefix(c.Request.URL.Path, "/api/webdav/") &&
+			!strings.HasPrefix(c.Request.URL.Path, "/api/webdav/mappings") {
 			c.Next()
 			return
 		}
@@ -408,18 +451,18 @@ func (s *Server) StopDDNS() {
 
 // StopEasyTierDaemon 在进程退出前停止 EasyTier daemon（若启用）
 func (s *Server) StopEasyTierDaemon() {
-	if s.easyTierDaemon == nil || s.easyTierCfg == nil || !s.easyTierCfg.DaemonEnabled {
+	if s.easyTierDaemons == nil || s.easyTierCfg == nil || !s.easyTierCfg.DaemonEnabled {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := s.easyTierDaemon.Stop(ctx); err != nil {
+	if err := s.easyTierDaemons.StopAll(ctx); err != nil {
 		log.Printf("stop EasyTier daemon failed: %v", err)
 	}
 }
 
 func (s *Server) maybeStartEasyTierDaemon() {
-	if s.easyTierDaemon == nil || s.easyTierCfg == nil || !s.easyTierCfg.DaemonEnabled {
+	if s.easyTierDaemons == nil || s.easyTierCfg == nil || !s.easyTierCfg.DaemonEnabled {
 		return
 	}
 	autostart, err := s.store.GetEasyTierAutostart()
@@ -430,26 +473,26 @@ func (s *Server) maybeStartEasyTierDaemon() {
 	if !autostart {
 		return
 	}
-	cfg, err := s.store.GetEasyTierConfig()
+	ps, err := s.store.GetEasyTierProfiles()
 	if err != nil {
-		log.Printf("load EasyTier config for daemon failed: %v", err)
+		log.Printf("load EasyTier profiles for daemon failed: %v", err)
 		return
 	}
-	if cfg == nil || !cfg.Enabled {
-		return
-	}
-	envPath := cfg.EnvFilePath
-	if envPath == "" && s.easyTierEnvPath != "" {
-		envPath = s.easyTierEnvPath
-	}
-	daemonPath := s.resolveDaemonPath(context.Background(), cfg.ImageTag)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := s.easyTierDaemon.Start(ctx, easytier.DaemonConfig{
-		BinaryPath: daemonPath,
-		EnvFile:    envPath,
-	}); err != nil {
-		log.Printf("auto start EasyTier daemon failed: %v", err)
+	for _, profile := range ps.Profiles {
+		if !profile.Config.Enabled {
+			continue
+		}
+		envPath := s.resolveEasyTierEnvPath(profile.ID, profile.Config.EnvFilePath)
+		daemonPath := s.resolveDaemonPath(context.Background(), profile.Config.ImageTag)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		err := s.easyTierDaemons.Start(ctx, profile.ID, easytier.DaemonConfig{
+			BinaryPath: daemonPath,
+			EnvFile:    envPath,
+		})
+		cancel()
+		if err != nil {
+			log.Printf("auto start EasyTier daemon failed (%s): %v", profile.ID, err)
+		}
 	}
 }
 

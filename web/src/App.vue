@@ -97,6 +97,7 @@ const cfAccounts = ref([])
 const cfCurrentAccountId = ref(null)
 const cfAccountsLoading = ref(false)
 const showCfAccountModal = ref(false)
+const isWindows = ref(false)
 
 const navItems = computed(() => [
   { path: '/dashboard', label: '仪表盘' },
@@ -104,6 +105,8 @@ const navItems = computed(() => [
   { path: '/cloudflare', label: 'Cloudflare' },
   { path: '/ddns', label: 'DDNS' },
   { path: '/easytier', label: 'EasyTier' },
+  ...(isWindows.value ? [{ path: '/webdev', label: 'WebDAV' }] : []),
+  ...(isWindows.value ? [{ path: '/smb', label: 'SMB' }] : []),
   { path: '/settings', label: '设置' },
 ])
 
@@ -154,6 +157,15 @@ async function fetchCfAccounts() {
   }
 }
 
+async function fetchPlatformFlags() {
+  try {
+    const { data } = await api.get('/stats')
+    isWindows.value = !!data?.is_windows
+  } catch (_) {
+    isWindows.value = false
+  }
+}
+
 async function onActivateCfAccount(id) {
   if (!id) return
   try {
@@ -187,6 +199,7 @@ onMounted(() => {
   if (route.path !== '/login') {
     fetchSettings()
     fetchCfAccounts()
+    fetchPlatformFlags()
   }
 })
 
@@ -196,6 +209,7 @@ watch(
     if (path !== '/login') {
       fetchSettings()
       fetchCfAccounts()
+      fetchPlatformFlags()
     }
   }
 )

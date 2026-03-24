@@ -74,4 +74,3 @@ func (s *Server) updateEasyTierSettings(c *gin.Context) {
 		"autostart_on_startup": target,
 	})
 }
-

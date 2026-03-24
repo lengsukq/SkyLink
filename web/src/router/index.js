@@ -8,6 +8,8 @@ const routes = [
   { path: '/cloudflare', name: 'Cloudflare', component: () => import('../views/Cloudflare.vue') },
   { path: '/ddns', name: 'DDNS', component: () => import('../views/DDNS.vue') },
   { path: '/easytier', name: 'EasyTier', component: () => import('../views/EasyTier.vue') },
+  { path: '/webdev', name: 'WebDAV', component: () => import('../views/WebDev.vue') },
+  { path: '/smb', name: 'SMB', component: () => import('../views/Smb.vue') },
   { path: '/settings', name: 'Settings', component: () => import('../views/Settings.vue') },
 ]
 
