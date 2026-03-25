@@ -116,6 +116,10 @@ func New(dbPath string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	if err := migrateSMBGrantAccount(db); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return &Store{db: db}, nil
 }
 
@@ -127,6 +131,20 @@ func migrateDDNSRecordType(db *sql.DB) error {
 	}
 	if strings.Contains(err.Error(), "record_type") || strings.Contains(err.Error(), "no such column") {
 		_, err = db.Exec("ALTER TABLE ddns_config ADD COLUMN record_type TEXT NOT NULL DEFAULT 'A'")
+		return err
+	}
+	return err
+}
+
+// migrateSMBGrantAccount 为 smb_mappings 增加 grant_account（SMB /GRANT 主体，空则沿用 Everyone 等默认行为）
+func migrateSMBGrantAccount(db *sql.DB) error {
+	_, err := db.Exec(`SELECT grant_account FROM smb_mappings LIMIT 1`)
+	if err == nil {
+		return nil
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "no such column") || strings.Contains(msg, "grant_account") {
+		_, err = db.Exec(`ALTER TABLE smb_mappings ADD COLUMN grant_account TEXT NOT NULL DEFAULT ''`)
 		return err
 	}
 	return err

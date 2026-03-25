@@ -63,6 +63,12 @@
         <n-form-item label="写入模式">
           <n-select v-model:value="form.read_only" :options="readOnlyOptions" />
         </n-form-item>
+        <n-form-item label="SMB 授权账户">
+          <n-input
+            v-model:value="form.grant_account"
+            placeholder="留空：只读时使用 Everyone；读写使用系统默认。可填 Administrator 或 DOMAIN\\User"
+          />
+        </n-form-item>
       </n-form>
     </n-modal>
   </div>
@@ -110,6 +116,13 @@ const columns = computed(() => [
   { title: '名称', key: 'name', width: 140 },
   { title: '共享名', key: 'share_name', width: 120 },
   { title: '本地目录', key: 'local_path', ellipsis: true },
+  {
+    title: '授权账户',
+    key: 'grant_account',
+    width: 120,
+    ellipsis: true,
+    render: (row) => row.grant_account || '—',
+  },
   {
     title: '状态',
     key: 'enabled',
@@ -175,6 +188,7 @@ function newForm() {
     local_path: '',
     enabled: true,
     read_only: false,
+    grant_account: '',
   }
 }
 
@@ -204,6 +218,7 @@ function openEdit(row) {
     local_path: row.local_path || '',
     enabled: !!row.enabled,
     read_only: !!row.read_only,
+    grant_account: row.grant_account || '',
   }
   showEditor.value = true
 }

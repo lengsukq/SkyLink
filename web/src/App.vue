@@ -104,6 +104,7 @@ const navItems = computed(() => [
   { path: '/mappings', label: '映射' },
   { path: '/cloudflare-center', label: 'Cloudflare' },
   { path: '/easytier', label: 'EasyTier' },
+  { path: '/file-services', label: '文件服务' },
   ...(isWindows.value ? [{ path: '/windows-tools', label: 'Windows 工具' }] : []),
   { path: '/settings', label: '设置' },
 ])

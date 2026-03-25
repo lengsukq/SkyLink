@@ -9,8 +9,9 @@ const routes = [
   { path: '/cloudflare', redirect: '/cloudflare-center' },
   { path: '/ddns', redirect: '/cloudflare-center' },
   { path: '/easytier', name: 'EasyTier', component: () => import('../views/EasyTier.vue') },
+  { path: '/file-services', name: 'FileServices', component: () => import('../views/FileServices.vue') },
   { path: '/windows-tools', name: 'WindowsTools', component: () => import('../views/WindowsTools.vue') },
-  { path: '/webdev', redirect: '/windows-tools' },
+  { path: '/webdev', redirect: '/file-services' },
   { path: '/smb', redirect: '/windows-tools' },
   { path: '/settings', name: 'Settings', component: () => import('../views/Settings.vue') },
 ]

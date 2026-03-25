@@ -23,6 +23,9 @@
           </n-space>
         </n-card>
       </n-gi>
+      <n-gi v-if="stats.is_windows">
+        <storage-volumes-panel section-class="" />
+      </n-gi>
       <n-gi>
         <n-card title="EasyTier 状态" size="small" class="page-card">
           <n-space vertical size="small">
@@ -58,6 +61,7 @@
 import { ref, onMounted } from 'vue'
 import { NCard, NGrid, NGi, NStatistic, NSpace, NButton, NH1, NTag } from 'naive-ui'
 import api from '../api/client'
+import StorageVolumesPanel from '../components/StorageVolumesPanel.vue'
 
 const stats = ref({
   mappings_count: 0,
@@ -67,6 +71,7 @@ const stats = ref({
   easytier_daemon_running: false,
   easytier_running_count: 0,
   easytier_has_runtime: false,
+  is_windows: false,
 })
 
 onMounted(async () => {

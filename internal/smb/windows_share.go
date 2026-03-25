@@ -1,7 +1,6 @@
 //go:build windows
 
 package smb
-
 import (
 	"errors"
 	"fmt"
@@ -22,7 +21,7 @@ type LocalShare struct {
 	Path string
 }
 
-func CreateOrUpdateShare(shareName string, localPath string, readOnly bool) error {
+func CreateOrUpdateShare(shareName string, localPath string, readOnly bool, grantAccount string) error {
 	normalizedName := strings.TrimSpace(shareName)
 	normalizedPath := filepath.Clean(strings.TrimSpace(localPath))
 	if normalizedName == "" {
@@ -35,10 +34,21 @@ func CreateOrUpdateShare(shareName string, localPath string, readOnly bool) erro
 		return err
 	}
 
+	grant := strings.TrimSpace(grantAccount)
+	if strings.Contains(grant, ",") {
+		return errors.New("grant_account must not contain commas")
+	}
+
 	// Make updates idempotent by deleting existing share first.
 	_ = DeleteShare(normalizedName)
 	args := []string{"share", fmt.Sprintf("%s=%s", normalizedName, normalizedPath)}
-	if readOnly {
+	if grant != "" {
+		perm := "CHANGE"
+		if readOnly {
+			perm = "READ"
+		}
+		args = append(args, fmt.Sprintf("/GRANT:%s,%s", grant, perm))
+	} else if readOnly {
 		args = append(args, "/GRANT:Everyone,READ")
 	}
 	if err := runNetCommand(args...); err != nil {

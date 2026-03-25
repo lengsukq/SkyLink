@@ -1,6 +1,7 @@
 <template>
   <div>
     <page-header
+      v-if="!embedded"
       title="WebDAV 映射"
       description="管理本地目录的 WebDAV 路由映射。访问入口：/api/webdav/{id}/..."
     >
@@ -11,6 +12,11 @@
         </n-space>
       </template>
     </page-header>
+
+    <n-space v-else :size="8" justify="end" class="page-section">
+      <n-button type="primary" size="small" @click="openCreate">添加映射</n-button>
+      <n-button size="small" @click="loadServices">刷新</n-button>
+    </n-space>
 
     <n-alert type="warning" class="page-section">
       账号密码按你的要求为明文保存并可回显，请仅在受控环境使用。
@@ -93,6 +99,10 @@ import {
 import api from '../api/client'
 import PageHeader from '../components/PageHeader.vue'
 import { notifyError, notifySuccess } from '../ui/notify'
+
+defineProps({
+  embedded: { type: Boolean, default: false },
+})
 
 const loading = ref(false)
 const list = ref([])

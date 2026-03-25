@@ -125,7 +125,7 @@ func (s *Server) addSMBService(c *gin.Context) {
 		return
 	}
 	if normalized.Enabled {
-		if err := smb.CreateOrUpdateShare(normalized.ShareName, normalized.LocalPath, normalized.ReadOnly); err != nil {
+		if err := smb.CreateOrUpdateShare(normalized.ShareName, normalized.LocalPath, normalized.ReadOnly, normalized.GrantAccount); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
@@ -166,7 +166,7 @@ func (s *Server) updateSMBService(c *gin.Context) {
 		_ = smb.DeleteShare(item.ShareName)
 	}
 	if normalized.Enabled {
-		if err := smb.CreateOrUpdateShare(normalized.ShareName, normalized.LocalPath, normalized.ReadOnly); err != nil {
+		if err := smb.CreateOrUpdateShare(normalized.ShareName, normalized.LocalPath, normalized.ReadOnly, normalized.GrantAccount); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
@@ -202,7 +202,7 @@ func (s *Server) startSMBService(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := smb.CreateOrUpdateShare(item.ShareName, item.LocalPath, item.ReadOnly); err != nil {
+	if err := smb.CreateOrUpdateShare(item.ShareName, item.LocalPath, item.ReadOnly, item.GrantAccount); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -244,7 +244,7 @@ func (s *Server) restartSMBService(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := smb.CreateOrUpdateShare(item.ShareName, item.LocalPath, item.ReadOnly); err != nil {
+	if err := smb.CreateOrUpdateShare(item.ShareName, item.LocalPath, item.ReadOnly, item.GrantAccount); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -294,6 +294,7 @@ func normalizeSMBPayload(req *store.SMBMapping) (*store.SMBMapping, error) {
 	name := strings.TrimSpace(req.Name)
 	localPath := filepath.Clean(strings.TrimSpace(req.LocalPath))
 	shareName := strings.TrimSpace(req.ShareName)
+	grant := strings.TrimSpace(req.GrantAccount)
 	if name == "" {
 		return nil, errf("name is required")
 	}
@@ -306,12 +307,16 @@ func normalizeSMBPayload(req *store.SMBMapping) (*store.SMBMapping, error) {
 	if !smbShareNameRegexp.MatchString(shareName) {
 		return nil, errf("share_name contains invalid characters")
 	}
+	if strings.Contains(grant, ",") {
+		return nil, errf("grant_account must not contain commas")
+	}
 	return &store.SMBMapping{
-		Name:      name,
-		LocalPath: localPath,
-		ShareName: shareName,
-		Enabled:   req.Enabled,
-		ReadOnly:  req.ReadOnly,
+		Name:         name,
+		LocalPath:    localPath,
+		ShareName:    shareName,
+		Enabled:      req.Enabled,
+		ReadOnly:     req.ReadOnly,
+		GrantAccount: grant,
 	}, nil
 }
 

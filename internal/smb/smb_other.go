@@ -11,7 +11,7 @@ type LocalShare struct {
 	Path string
 }
 
-func CreateOrUpdateShare(_ string, _ string, _ bool) error { return errWindowsOnly }
+func CreateOrUpdateShare(_ string, _ string, _ bool, _ string) error { return errWindowsOnly }
 
 func DeleteShare(_ string) error { return errWindowsOnly }
 

@@ -5,7 +5,7 @@ import "time"
 // ListSMBMappings returns all SMB mapping definitions.
 func (s *Store) ListSMBMappings() ([]SMBMapping, error) {
 	rows, err := s.db.Query(`
-		SELECT id, name, local_path, share_name, enabled, read_only, created_at, updated_at
+		SELECT id, name, local_path, share_name, enabled, read_only, grant_account, created_at, updated_at
 		FROM smb_mappings
 		ORDER BY id
 	`)
@@ -24,6 +24,7 @@ func (s *Store) ListSMBMappings() ([]SMBMapping, error) {
 			&item.ShareName,
 			&item.Enabled,
 			&item.ReadOnly,
+			&item.GrantAccount,
 			&item.CreatedAt,
 			&item.UpdatedAt,
 		); err != nil {
@@ -38,7 +39,7 @@ func (s *Store) ListSMBMappings() ([]SMBMapping, error) {
 func (s *Store) GetSMBMapping(id int64) (*SMBMapping, error) {
 	var item SMBMapping
 	err := s.db.QueryRow(`
-		SELECT id, name, local_path, share_name, enabled, read_only, created_at, updated_at
+		SELECT id, name, local_path, share_name, enabled, read_only, grant_account, created_at, updated_at
 		FROM smb_mappings
 		WHERE id = ?
 	`, id).Scan(
@@ -48,6 +49,7 @@ func (s *Store) GetSMBMapping(id int64) (*SMBMapping, error) {
 		&item.ShareName,
 		&item.Enabled,
 		&item.ReadOnly,
+		&item.GrantAccount,
 		&item.CreatedAt,
 		&item.UpdatedAt,
 	)
@@ -61,7 +63,7 @@ func (s *Store) GetSMBMapping(id int64) (*SMBMapping, error) {
 func (s *Store) GetSMBMappingByShareName(shareName string) (*SMBMapping, error) {
 	var item SMBMapping
 	err := s.db.QueryRow(`
-		SELECT id, name, local_path, share_name, enabled, read_only, created_at, updated_at
+		SELECT id, name, local_path, share_name, enabled, read_only, grant_account, created_at, updated_at
 		FROM smb_mappings
 		WHERE share_name = ?
 	`, shareName).Scan(
@@ -71,6 +73,7 @@ func (s *Store) GetSMBMappingByShareName(shareName string) (*SMBMapping, error) 
 		&item.ShareName,
 		&item.Enabled,
 		&item.ReadOnly,
+		&item.GrantAccount,
 		&item.CreatedAt,
 		&item.UpdatedAt,
 	)
@@ -84,14 +87,15 @@ func (s *Store) GetSMBMappingByShareName(shareName string) (*SMBMapping, error) 
 func (s *Store) AddSMBMapping(item *SMBMapping) (int64, error) {
 	now := time.Now().Unix()
 	res, err := s.db.Exec(`
-		INSERT INTO smb_mappings (name, local_path, share_name, enabled, read_only, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO smb_mappings (name, local_path, share_name, enabled, read_only, grant_account, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	`,
 		item.Name,
 		item.LocalPath,
 		item.ShareName,
 		item.Enabled,
 		item.ReadOnly,
+		item.GrantAccount,
 		now,
 		now,
 	)
@@ -105,7 +109,7 @@ func (s *Store) AddSMBMapping(item *SMBMapping) (int64, error) {
 func (s *Store) UpdateSMBMapping(id int64, item *SMBMapping) error {
 	_, err := s.db.Exec(`
 		UPDATE smb_mappings
-		SET name = ?, local_path = ?, share_name = ?, enabled = ?, read_only = ?, updated_at = ?
+		SET name = ?, local_path = ?, share_name = ?, enabled = ?, read_only = ?, grant_account = ?, updated_at = ?
 		WHERE id = ?
 	`,
 		item.Name,
@@ -113,6 +117,7 @@ func (s *Store) UpdateSMBMapping(id int64, item *SMBMapping) error {
 		item.ShareName,
 		item.Enabled,
 		item.ReadOnly,
+		item.GrantAccount,
 		time.Now().Unix(),
 		id,
 	)

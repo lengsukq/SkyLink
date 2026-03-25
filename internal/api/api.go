@@ -153,6 +153,9 @@ func (s *Server) Handler() http.Handler {
 	// 仪表盘汇总
 	r.GET("/api/stats", s.stats)
 
+	// 本机存储（当前实现：Windows 固定磁盘卷容量）
+	r.GET("/api/system/volumes", s.getSystemVolumes)
+
 	// 全局设置
 	r.GET("/api/settings", s.getSettings)
 	r.PUT("/api/settings", s.updateSettings)
