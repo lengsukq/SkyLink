@@ -1,25 +1,37 @@
 import { notifyError, notifySuccess } from '../ui/notify'
 
-export function useDirectoryPicker(onResolvedPath) {
-  function openDirectoryPicker(inputRef) {
+export type ResolvedPathOptions = {
+  partial?: boolean
+}
+
+export type ResolvedPathCallback = (resolvedPath: string, options?: ResolvedPathOptions) => void
+
+type InputRef = {
+  value?: HTMLInputElement | null
+}
+
+export function useDirectoryPicker(onResolvedPath: ResolvedPathCallback) {
+  function openDirectoryPicker(inputRef?: InputRef | null) {
     const input = inputRef?.value
     if (!input) {
       notifyError('当前环境不支持', '无法打开目录选择器，请手动填写本地目录路径。')
       return
     }
+
     input.value = ''
     input.click()
   }
 
-  function onDirectoryPicked(event) {
-    const input = event?.target
+  function onDirectoryPicked(event: Event) {
+    const input = event.target as HTMLInputElement | null
     const files = input?.files
     if (!files || files.length === 0) return
 
     const first = files[0]
-    const relativePath = first.webkitRelativePath || ''
+    const relativePath = ((first as any).webkitRelativePath as string | undefined) || ''
     const firstSegment = relativePath.split('/')[0] || ''
-    const absoluteFilePath = typeof first.path === 'string' ? first.path : ''
+    const absoluteFilePath =
+      typeof (first as any).path === 'string' ? ((first as any).path as string) : ''
 
     if (absoluteFilePath && relativePath) {
       const normalizedAbs = absoluteFilePath.replace(/\\/g, '/')
@@ -48,3 +60,4 @@ export function useDirectoryPicker(onResolvedPath) {
     onDirectoryPicked,
   }
 }
+

@@ -153,7 +153,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, h, onMounted, computed, inject, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { NButton, NPopconfirm, NSpace, NDataTable, NModal, NForm, NFormItem, NInput, NInputNumber, NSelect, NSpin, NEllipsis, NTag, NCard } from 'naive-ui'
@@ -162,10 +162,17 @@ import { getAllCachedRecordsForAccount, setCachedRecords } from '../utils/cfReco
 import PageHeader from '../components/PageHeader.vue'
 import EmptyState from '../components/EmptyState.vue'
 import CfAccountFormModal from '../components/CfAccountFormModal.vue'
+import { cfCurrentAccountIdKey, refreshCfStateKey } from '../types/cfContext'
 
 const router = useRouter()
 
-const list = ref([])
+type Zone = { id: number | string; name: string }
+type MeshIpOption = { label: string; value: string }
+type FrpSettings = { frp_cname_target: string }
+type CfStatusType = 'default' | 'success' | 'warning'
+type CfStatus = { text: string; type: CfStatusType }
+
+const list = ref<any[]>([])
 const loading = ref(false)
 const showAdd = ref(false)
 const showEdit = ref(false)
@@ -173,34 +180,39 @@ const showOneClick = ref(false)
 const showNoCfHint = ref(false)
 const showNoFrpHint = ref(false)
 const showAddAccountModal = ref(false)
-const addForm = ref({ host: '', backend: '' })
-const oneClickForm = ref({ host: '', backend: '', zone_id: '', cname_target: '' })
-const editForm = ref({ id: null, host: '', backend: '' })
+const addForm = ref<{ host: string; backend: string }>({ host: '', backend: '' })
+const oneClickForm = ref<{ host: string; backend: string; zone_id: string; cname_target: string }>({
+  host: '',
+  backend: '',
+  zone_id: '',
+  cname_target: '',
+})
+const editForm = ref<{ id: number | null; host: string; backend: string }>({ id: null, host: '', backend: '' })
 
-const zones = ref([])
-const cfCurrentAccountId = inject('cfCurrentAccountId', ref(null))
-const refreshCfState = inject('refreshCfState', () => Promise.resolve())
+const zones = ref<Zone[]>([])
+const cfCurrentAccountId = inject(cfCurrentAccountIdKey, ref<number | null>(null))
+const refreshCfState = inject(refreshCfStateKey, () => Promise.resolve())
 const zoneOptions = computed(() => zones.value.map((z) => ({ label: z.name, value: z.id })))
 
-const meshIpOptions = ref([])
-const meshSelectedIp = ref(null)
-const meshPort = ref(3000)
-const meshSelectedIpEdit = ref(null)
-const meshPortEdit = ref(3000)
+const meshIpOptions = ref<MeshIpOption[]>([])
+const meshSelectedIp = ref<string | null>(null)
+const meshPort = ref<number>(3000)
+const meshSelectedIpEdit = ref<string | null>(null)
+const meshPortEdit = ref<number>(3000)
 
-const settings = ref({ frp_cname_target: '' })
+const settings = ref<FrpSettings>({ frp_cname_target: '' })
 
 const frpCnameTarget = computed(() => (settings.value.frp_cname_target || '').trim())
 
 async function loadMeshIps() {
   try {
     const { data } = await api.get('/easytier/status/all')
-    const ips = []
-    ;(data?.profiles || []).forEach((item) => {
+    const ips: MeshIpOption[] = []
+    ;(data?.profiles || []).forEach((item: any) => {
       const st = item?.status
       if (!item?.ok || !st) return
       if (st?.self_ipv4) ips.push({ label: `${st.self_ipv4} (${item?.name || item?.id || '本机'})`, value: st.self_ipv4 })
-      ;(st?.peers || []).forEach((p) => {
+      ;(st?.peers || []).forEach((p: any) => {
         if (p.ipv4 && p.ipv4 !== st?.self_ipv4) ips.push({ label: `${p.ipv4} (${item?.name || item?.id || 'peer'})`, value: p.ipv4 })
       })
     })
@@ -213,13 +225,15 @@ async function loadMeshIps() {
 async function loadSettings() {
   try {
     const { data } = await api.get('/settings')
-    settings.value = data || {}
+    settings.value = data?.frp_cname_target
+      ? { frp_cname_target: String(data.frp_cname_target) }
+      : { frp_cname_target: '' }
   } catch (_) {
-    settings.value = {}
+    settings.value = { frp_cname_target: '' }
   }
 }
 
-function fillBackendFromMesh(which) {
+function fillBackendFromMesh(which: 'add' | 'edit') {
   const ip = which === 'add' ? meshSelectedIp.value : meshSelectedIpEdit.value
   const port = which === 'add' ? meshPort.value : meshPortEdit.value
   if (!ip) return
@@ -232,17 +246,17 @@ watch([showAdd, showEdit], ([add, edit]) => {
   if (add || edit) loadMeshIps()
 })
 
-function normalizeName(name) {
+function normalizeName(name: string) {
   return (name || '').trim().toLowerCase().replace(/\.$/, '')
 }
 
 const allCfRecords = computed(() => getAllCachedRecordsForAccount(cfCurrentAccountId.value))
 const cfRecordNamesSet = computed(() => {
   const records = allCfRecords.value
-  return new Set(records.map((r) => normalizeName(r.name)))
+  return new Set(records.map((r) => normalizeName(String(r.name))))
 })
 
-function getCfStatus(host) {
+function getCfStatus(host: string): CfStatus {
   if (cfCurrentAccountId.value == null) return { text: '未同步', type: 'default' }
   if (allCfRecords.value.length === 0) return { text: '未同步', type: 'default' }
   return cfRecordNamesSet.value.has(normalizeName(host))
@@ -261,7 +275,7 @@ const columns = computed(() => [
     title: '域名',
     key: 'host',
     ellipsis: true,
-    render(row) {
+    render(row: any) {
       return h(
         NEllipsis,
         { style: 'max-width: 260px' },
@@ -273,7 +287,7 @@ const columns = computed(() => [
     title: '后端',
     key: 'backend',
     ellipsis: true,
-    render(row) {
+    render(row: any) {
       return h(
         NEllipsis,
         { style: 'max-width: 320px' },
@@ -285,7 +299,7 @@ const columns = computed(() => [
     title: 'CF 状态',
     key: 'cfStatus',
     width: 100,
-    render(row) {
+    render(row: any) {
       const status = getCfStatus(row.host)
       return h(NTag, { type: status.type, size: 'small' }, { default: () => status.text })
     },
@@ -294,7 +308,7 @@ const columns = computed(() => [
     title: '操作',
     key: 'actions',
     width: 160,
-    render(row) {
+    render(row: any) {
       return h(NSpace, null, {
         default: () => [
           h(NButton, { size: 'small', onClick: () => { editForm.value = { id: row.id, host: row.host, backend: row.backend }; showEdit.value = true } }, { default: () => '编辑' }),
@@ -396,7 +410,7 @@ async function onEdit() {
   return true
 }
 
-async function remove(id) {
+async function remove(id: number) {
   await api.delete(`/mappings/${id}`)
   await load()
 }

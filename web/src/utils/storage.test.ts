@@ -14,3 +14,4 @@ describe('storage utils', () => {
     expect(percentUsed({ total_bytes: 200, used_bytes: 300 })).toBe(100)
   })
 })
+

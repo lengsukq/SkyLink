@@ -58,14 +58,14 @@
       </n-message-provider>
       <cf-account-form-modal
         v-model:show="showCfAccountModal"
-        :editing-account="null"
+        :editing-account="undefined"
         @saved="onCfAccountSaved"
       />
     </n-notification-provider>
   </n-config-provider>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, ref, onMounted, watch, provide } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
@@ -84,6 +84,7 @@ import CfAccountFormModal from './components/CfAccountFormModal.vue'
 import api from './api/client'
 import { notifySuccess } from './ui/notify'
 import { ROUTE_PATHS } from './constants/routes'
+import { cfAccountsKey, cfCurrentAccountIdKey, refreshCfStateKey, type CfAccount } from './types/cfContext'
 
 const themeOverrides = {
   common: {
@@ -94,8 +95,8 @@ const themeOverrides = {
 const route = useRoute()
 const router = useRouter()
 
-const cfAccounts = ref([])
-const cfCurrentAccountId = ref(null)
+const cfAccounts = ref<CfAccount[]>([])
+const cfCurrentAccountId = ref<number | null>(null)
 const cfAccountsLoading = ref(false)
 const showCfAccountModal = ref(false)
 const isWindows = ref(false)
@@ -119,11 +120,11 @@ const cfAccountOptions = computed(() =>
 
 const isLoginPage = computed(() => route.path === ROUTE_PATHS.login)
 
-function isActive(path) {
+function isActive(path: string) {
   return route.path === path
 }
 
-function go(path) {
+function go(path: string) {
   if (route.path !== path) {
     router.push(path)
   }
@@ -168,7 +169,7 @@ async function fetchPlatformFlags() {
   }
 }
 
-async function onActivateCfAccount(id) {
+async function onActivateCfAccount(id: number | null) {
   if (!id) return
   try {
     await api.put(`/cf/accounts/${id}/activate`)
@@ -179,7 +180,7 @@ async function onActivateCfAccount(id) {
   }
 }
 
-function onCfAccountSaved(newId) {
+function onCfAccountSaved(newId?: number | null) {
   fetchCfAccounts().then(() => {
     if (newId) {
       onActivateCfAccount(newId)
@@ -189,13 +190,13 @@ function onCfAccountSaved(newId) {
   })
 }
 
-function refreshCfState() {
-  return Promise.all([fetchSettings(), fetchCfAccounts()])
+async function refreshCfState(): Promise<void> {
+  await Promise.all([fetchSettings(), fetchCfAccounts()])
 }
 
-provide('cfCurrentAccountId', cfCurrentAccountId)
-provide('cfAccounts', cfAccounts)
-provide('refreshCfState', refreshCfState)
+provide(cfCurrentAccountIdKey, cfCurrentAccountId)
+provide(cfAccountsKey, cfAccounts)
+provide(refreshCfStateKey, refreshCfState)
 
 onMounted(() => {
   if (route.path !== ROUTE_PATHS.login) {

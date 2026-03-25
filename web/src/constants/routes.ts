@@ -12,4 +12,5 @@ export const ROUTE_PATHS = {
   webDevLegacy: '/webdev',
   smbLegacy: '/smb',
   settings: '/settings',
-}
+} as const
+

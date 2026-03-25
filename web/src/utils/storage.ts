@@ -1,4 +1,4 @@
-export function formatBytes(n) {
+export function formatBytes(n: number | string): string {
   const num = Number(n) || 0
   if (num === 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
@@ -12,9 +12,12 @@ export function formatBytes(n) {
   return `${x.toFixed(frac)} ${units[i]}`
 }
 
-export function percentUsed(volume) {
+export function percentUsed(
+  volume: { total_bytes?: number | string; used_bytes?: number | string } | any,
+): number {
   const totalBytes = Number(volume?.total_bytes) || 0
   if (totalBytes <= 0) return 0
   const usedBytes = Number(volume?.used_bytes) || 0
   return Math.min(100, Math.round((usedBytes / totalBytes) * 1000) / 10)
 }
+

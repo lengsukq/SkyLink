@@ -7,7 +7,11 @@ const routes = [
   { path: ROUTE_PATHS.root, redirect: ROUTE_PATHS.dashboard },
   { path: ROUTE_PATHS.dashboard, name: 'Dashboard', component: () => import('../views/Dashboard.vue') },
   { path: ROUTE_PATHS.mappings, name: 'Mappings', component: () => import('../views/Mappings.vue') },
-  { path: ROUTE_PATHS.cloudflareCenter, name: 'CloudflareCenter', component: () => import('../views/CloudflareCenter.vue') },
+  {
+    path: ROUTE_PATHS.cloudflareCenter,
+    name: 'CloudflareCenter',
+    component: () => import('../views/CloudflareCenter.vue'),
+  },
   { path: ROUTE_PATHS.cloudflareLegacy, redirect: ROUTE_PATHS.cloudflareCenter },
   { path: ROUTE_PATHS.ddnsLegacy, redirect: ROUTE_PATHS.cloudflareCenter },
   { path: ROUTE_PATHS.easyTier, name: 'EasyTier', component: () => import('../views/EasyTier.vue') },
@@ -31,3 +35,4 @@ router.beforeEach((to) => {
 })
 
 export default router
+

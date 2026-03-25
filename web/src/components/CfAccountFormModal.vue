@@ -38,24 +38,39 @@
   </n-modal>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue'
 import { NModal, NForm, NFormItem, NInput, NSelect, NSpace, NButton } from 'naive-ui'
 import api from '../api/client'
 import { notifySuccess } from '../ui/notify'
+import type { CfAccount } from '../types/cfContext'
 
-const props = defineProps({
-  show: { type: Boolean, default: false },
-  editingAccount: { type: Object, default: null },
-})
+type ZoneOption = {
+  id: number | string
+  name: string
+}
 
-const emit = defineEmits(['update:show', 'saved'])
+const props = withDefaults(
+  defineProps<{
+    show: boolean
+    editingAccount?: CfAccount | null
+  }>(),
+  {
+    show: false,
+    editingAccount: null,
+  },
+)
+
+const emit = defineEmits<{
+  'update:show': [boolean]
+  saved: [] | [number | null]
+}>()
 
 const accountSaving = ref(false)
 const form = reactive({ name: '', api_token: '', zone_id: '' })
 const zoneValidated = ref(false)
 const zoneChecking = ref(false)
-const availableZones = ref([])
+const availableZones = ref<ZoneOption[]>([])
 
 const zoneOptions = computed(() =>
   (availableZones.value || []).map((z) => ({
@@ -69,9 +84,10 @@ watch(
   ([show, editing]) => {
     if (show) {
       if (editing) {
-        form.name = editing.name || ''
+        const account = editing as CfAccount
+        form.name = account.name || ''
         form.api_token = ''
-        form.zone_id = editing.zone_id || ''
+        form.zone_id = account.zone_id != null ? String(account.zone_id) : ''
         zoneValidated.value = true
         availableZones.value = []
       } else {
@@ -98,7 +114,7 @@ async function validateZone() {
     if (data?.zone_id) {
       form.zone_id = data.zone_id
     } else if (availableZones.value.length && !form.zone_id) {
-      form.zone_id = availableZones.value[0].id
+      form.zone_id = String(availableZones.value[0].id)
     }
     zoneValidated.value = true
     notifySuccess('验证通过', 'API Token 与 Zone 设置已通过校验')
@@ -130,7 +146,8 @@ async function onSave() {
       api_token: form.api_token.trim(),
       zone_id: form.zone_id.trim(),
     })
-    emit('saved', data?.id)
+    const id = typeof data?.id === 'number' ? data.id : Number(data?.id)
+    emit('saved', Number.isFinite(id) ? id : null)
     emit('update:show', false)
     notifySuccess('保存成功', 'Cloudflare 账号已添加')
     return true

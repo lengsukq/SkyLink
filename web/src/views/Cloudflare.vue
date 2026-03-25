@@ -151,7 +151,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onMounted, watch, h, inject } from 'vue'
 import { useRoute } from 'vue-router'
 import {
@@ -177,22 +177,26 @@ import { getCachedRecords, setCachedRecords } from '../utils/cfRecordsCache'
 import PageHeader from '../components/PageHeader.vue'
 import EmptyState from '../components/EmptyState.vue'
 import CfAccountFormModal from '../components/CfAccountFormModal.vue'
+import { cfAccountsKey, cfCurrentAccountIdKey, refreshCfStateKey, type CfAccount } from '../types/cfContext'
+import type { CfDnsRecord } from '../utils/cfRecordsCache/types'
 
 const route = useRoute()
 
-const cfCurrentAccountId = inject('cfCurrentAccountId', ref(null))
-const cfAccounts = inject('cfAccounts', ref([]))
-const refreshCfState = inject('refreshCfState', () => Promise.resolve())
+type Zone = { id: number | string; name: string }
 
-const zones = ref([])
-const records = ref([])
-const currentZoneId = ref(null)
+const cfCurrentAccountId = inject(cfCurrentAccountIdKey, ref<number | null>(null))
+const cfAccounts = inject(cfAccountsKey, ref<CfAccount[]>([]))
+const refreshCfState = inject(refreshCfStateKey, () => Promise.resolve())
+
+const zones = ref<Zone[]>([])
+const records = ref<CfDnsRecord[]>([])
+const currentZoneId = ref<number | string | null>(null)
 const loading = ref(false)
 
 const accountsLoading = ref(false)
-const accounts = ref([])
+const accounts = ref<CfAccount[]>([])
 const showAccountModal = ref(false)
-const editingAccount = ref(null)
+const editingAccount = ref<CfAccount | null>(null)
 const showAccountsManager = ref(false)
 
 const zoneStorageKey = 'skylink_cf_zone_id'
@@ -234,7 +238,7 @@ const accountColumns = [
     title: '操作',
     key: 'actions',
     width: 180,
-    render: (row) =>
+    render: (row: any) =>
       h(NSpace, null, {
         default: () => [
           h(
@@ -268,7 +272,7 @@ const recordColumns = computed(() => [
     title: '名称',
     key: 'name',
     ellipsis: true,
-    render: (row) =>
+    render: (row: any) =>
       h(
         NEllipsis,
         { style: 'max-width: 260px' },
@@ -279,7 +283,7 @@ const recordColumns = computed(() => [
     title: '内容',
     key: 'content',
     ellipsis: true,
-    render: (row) =>
+    render: (row: any) =>
       h(
         NEllipsis,
         { style: 'max-width: 320px' },
@@ -291,7 +295,7 @@ const recordColumns = computed(() => [
     title: 'Proxied',
     key: 'proxied',
     width: 110,
-    render: (row) =>
+    render: (row: any) =>
       h(NSwitch, {
         value: !!row.proxied,
         loading: proxiedLoading.value.has(row.id),
@@ -302,7 +306,7 @@ const recordColumns = computed(() => [
     title: '操作',
     key: 'actions',
     width: 180,
-    render: (row) =>
+    render: (row: any) =>
       h(NSpace, null, {
         default: () => [
           h(
@@ -379,7 +383,7 @@ async function loadZones() {
 
 function loadRecordsFromCache() {
   if (!currentZoneId.value) return
-  const cached = getCachedRecords(cfCurrentAccountId.value, currentZoneId.value)
+  const cached = getCachedRecords(cfCurrentAccountId.value, String(currentZoneId.value))
   records.value = cached != null ? cached : []
 }
 
@@ -390,7 +394,7 @@ async function loadRecords() {
     const { data } = await api.get(`/cf/zones/${currentZoneId.value}/records`)
     const list = data.records || []
     records.value = list
-    setCachedRecords(cfCurrentAccountId.value, currentZoneId.value, list)
+    setCachedRecords(cfCurrentAccountId.value, String(currentZoneId.value), list)
   } catch (_) {
     records.value = []
   } finally {
@@ -402,7 +406,7 @@ watch(
   currentZoneId,
   (v) => {
     if (!v) return
-    localStorage.setItem(zoneStorageKey, v)
+    localStorage.setItem(zoneStorageKey, String(v))
     page.value = 1
     query.value = ''
     loadRecordsFromCache()
@@ -410,7 +414,7 @@ watch(
   { immediate: false }
 )
 
-function onPageSizeChange(ps) {
+function onPageSizeChange(ps: number) {
   pageSize.value = ps
   page.value = 1
 }
@@ -445,7 +449,7 @@ const showEdit = ref(false)
 const editLoading = ref(false)
 const editForm = ref({ id: '', type: 'CNAME', name: '', content: '', ttl: 1, proxied: true })
 
-function openEdit(row) {
+function openEdit(row: any) {
   editForm.value = {
     id: row.id,
     type: row.type,
@@ -479,7 +483,7 @@ async function onEdit() {
   }
 }
 
-async function onDelete(row) {
+async function onDelete(row: any) {
   if (!currentZoneId.value) return
   await api.delete(`/cf/zones/${currentZoneId.value}/records/${row.id}`)
   notifySuccess('删除成功', 'DNS 记录已删除')
@@ -496,12 +500,12 @@ function openCreateAccount() {
   showAccountModal.value = true
 }
 
-function openEditAccount(row) {
+function openEditAccount(row: any) {
   editingAccount.value = row
   showAccountModal.value = true
 }
 
-async function deleteAccount(id) {
+async function deleteAccount(id: number | string) {
   await api.delete(`/cf/accounts/${id}`)
   await refreshCfState()
   await loadAccounts()
@@ -517,7 +521,7 @@ async function onAccountSaved() {
   }
 }
 
-async function toggleProxied(row, v) {
+async function toggleProxied(row: any, v: boolean) {
   if (!currentZoneId.value) return
   if (proxiedLoading.value.has(row.id)) return
   const prev = !!row.proxied
@@ -541,7 +545,7 @@ async function toggleProxied(row, v) {
   }
 }
 
-function normalizeTTL(v) {
+function normalizeTTL(v: string | number) {
   const n = Number(v)
   if (Number.isNaN(n)) return 1
   if (!Number.isFinite(n)) return 1

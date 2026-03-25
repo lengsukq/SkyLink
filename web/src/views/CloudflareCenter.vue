@@ -22,18 +22,23 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed, inject, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NAlert, NCard, NTabs, NTabPane } from 'naive-ui'
 import PageHeader from '../components/PageHeader.vue'
 import CloudflareView from './Cloudflare.vue'
 import DDNSView from './DDNS.vue'
+import {
+  cfAccountsKey,
+  cfCurrentAccountIdKey,
+  type CfAccount,
+} from '../types/cfContext'
 
 const route = useRoute()
 const router = useRouter()
-const cfCurrentAccountId = inject('cfCurrentAccountId', ref(null))
-const cfAccounts = inject('cfAccounts', ref([]))
+const cfCurrentAccountId = inject(cfCurrentAccountIdKey, ref<number | null>(null))
+const cfAccounts = inject(cfAccountsKey, ref<CfAccount[]>([]))
 
 const TAB_CLOUDFLARE = 'cloudflare'
 const TAB_DDNS = 'ddns'
@@ -42,12 +47,12 @@ const needAccountSetup = computed(
   () => !(cfAccounts.value || []).length || !cfCurrentAccountId.value
 )
 
-function normalizeTab(tab) {
+function normalizeTab(tab: unknown) {
   if (tab === TAB_DDNS) return TAB_DDNS
   return TAB_CLOUDFLARE
 }
 
-function getSafeTab(tab) {
+function getSafeTab(tab: unknown) {
   const normalized = normalizeTab(tab)
   if (normalized === TAB_DDNS && needAccountSetup.value) {
     return TAB_CLOUDFLARE

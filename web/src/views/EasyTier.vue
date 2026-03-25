@@ -328,7 +328,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, reactive, onMounted, h, computed } from 'vue'
 import { NCard, NForm, NFormItem, NInput, NInputGroup, NButton, NSpace, NDataTable, NCollapse, NCollapseItem, NSwitch, NRadioGroup, NRadio, NCheckbox, NDivider, NGrid, NGi, NSelect, NAlert } from 'naive-ui'
 import api from '../api/client'
@@ -374,8 +374,8 @@ const status = reactive({
   version: '',
   self_ipv4: '',
   self_hostname: '',
-  peers: [],
-  routes: [],
+  peers: [] as any[],
+  routes: [] as any[],
 })
 const vpnPortal = reactive({
   config: '',
@@ -392,26 +392,26 @@ const platform = reactive({
   arch: '',
   label: '',
 })
-const releasesList = ref([])
+const releasesList = ref<any[]>([])
 const releasesError = ref('')
-const platformsList = ref([])
+const platformsList = ref<any[]>([])
 const currentPlatformLabel = ref('')
-const releaseOptions = ref([])
-const platformOptions = ref([])
-const selectedVersion = ref(null)
-const selectedPlatformKey = ref(null)
+const releaseOptions = ref<any[]>([])
+const platformOptions = ref<any[]>([])
+const selectedVersion = ref<string | null>(null)
+const selectedPlatformKey = ref<string | null>(null)
 const runtimeInstalling = ref(false)
 const runtimeRemoving = ref(false)
 const runtimeInstalled = ref(false)
 const runtimeVersion = ref('')
 const platformError = ref('')
 const runtimeError = ref('')
-const installedList = ref([])
+const installedList = ref<any[]>([])
 const removingInstalledKey = ref('')
 const daemonLogs = ref('')
 const daemonLogsLoading = ref(false)
 const releasePortLoading = ref(false)
-const profiles = ref([])
+const profiles = ref<any[]>([])
 const activeProfileId = ref('')
 const newProfileName = ref('')
 
@@ -419,7 +419,7 @@ const profileOptions = computed(() => profiles.value.map((p) => ({ label: p.name
 const canDeleteProfile = computed(() => profiles.value.length > 1 && !!activeProfileId.value)
 
 const aggregatedErrors = computed(() => {
-  const list = []
+  const list: string[] = []
   if (daemonStatus.last_start_error) list.push(`上次启动错误：${daemonStatus.last_start_error}`)
   if (status.error) list.push(status.error)
   if (releasesError.value) list.push(releasesError.value)
@@ -457,7 +457,7 @@ const selectedInstalledKey = computed({
 
 // 展示用节点列表：本机行 + peers，用于「节点信息」表
 const displayNodes = computed(() => {
-  const list = []
+  const list: any[] = []
   if (status.self_ipv4 || status.self_hostname) {
     list.push({
       ipv4: status.self_ipv4 || '—',
@@ -490,7 +490,7 @@ const nodeTableColumns = [
     title: '延迟',
     key: 'latency_ms',
     width: 80,
-    render: (row) => (row.latency_ms != null && row.latency_ms !== '' ? `${Number(row.latency_ms)}ms` : '—'),
+    render: (row: any) => (row.latency_ms != null && row.latency_ms !== '' ? `${Number(row.latency_ms)}ms` : '—'),
   },
   { title: '内核版本', key: 'version', width: 120, ellipsis: true },
 ]
@@ -501,11 +501,11 @@ const routeColumns = [
   { title: 'NextHop', key: 'next_hop_ipv4', width: 120 },
 ]
 
-function installedItemKey(row) {
+function installedItemKey(row: any) {
   return `${row.version}-${row.os}-${row.arch}`
 }
 
-function isCurrentSelected(row) {
+function isCurrentSelected(row: any) {
   const plat = selectedPlatformKey.value ? `${row.os}/${row.arch}` === selectedPlatformKey.value : false
   const ver = (selectedVersion.value || form.image_tag) && row.version === (selectedVersion.value || form.image_tag)
   return plat && ver
@@ -513,13 +513,13 @@ function isCurrentSelected(row) {
 
 const installedListColumns = [
   { title: '版本', key: 'version', width: 100 },
-  { title: '平台', key: 'platform', width: 110, render: (row) => `${row.os}/${row.arch}` },
-  { title: '说明', key: 'current', width: 80, render: (row) => (isCurrentSelected(row) ? '当前使用' : '') },
+  { title: '平台', key: 'platform', width: 110, render: (row: any) => `${row.os}/${row.arch}` },
+  { title: '说明', key: 'current', width: 80, render: (row: any) => (isCurrentSelected(row) ? '当前使用' : '') },
   {
     title: '操作',
     key: 'action',
     width: 80,
-    render: (row) => {
+    render: (row: any) => {
       const key = installedItemKey(row)
       return h(
         NButton,
@@ -536,14 +536,14 @@ const installedListColumns = [
   },
 ]
 
-function onDHCPChange(val) {
+function onDHCPChange(val: boolean) {
   form.dhcp = val
   if (val) {
     form.ipv4 = ''
   }
 }
 
-function onIPv4Change(val) {
+function onIPv4Change(val: string) {
   form.ipv4 = val
   if (val && form.dhcp) {
     form.dhcp = false
@@ -574,7 +574,7 @@ async function loadConfig() {
         networkMode.value = 'public'
         const first = peers
           .split(/[\n,]+/)
-          .map((s) => s.trim())
+          .map((s: string) => s.trim())
           .find(Boolean)
         publicServer.value = first || DEFAULT_PUBLIC_SERVER
       } else {
@@ -599,12 +599,12 @@ async function loadProfiles() {
   }
 }
 
-function profilePath(path) {
+function profilePath(path: string) {
   if (!activeProfileId.value) return `/easytier${path}`
   return `/easytier/profiles/${activeProfileId.value}${path}`
 }
 
-async function onProfileChange(profileId) {
+async function onProfileChange(profileId: string) {
   if (!profileId) return
   try {
     await api.put(`/easytier/profiles/active/${profileId}`)
@@ -666,7 +666,7 @@ async function loadReleases() {
     const { data } = await api.get('/easytier/releases')
     const list = data?.releases || []
     releasesList.value = list
-    releaseOptions.value = list.map((r) => ({ label: r.tag_name, value: r.tag_name }))
+    releaseOptions.value = list.map((r: any) => ({ label: r.tag_name, value: r.tag_name }))
   } catch (_) {
     releasesList.value = []
     releaseOptions.value = []
@@ -680,7 +680,7 @@ async function loadPlatforms() {
     const list = data?.platforms || []
     platformsList.value = list
     currentPlatformLabel.value = data?.current?.label || ''
-    platformOptions.value = list.map((p) => ({ label: p.label, value: p.label }))
+    platformOptions.value = list.map((p: any) => ({ label: p.label, value: p.label }))
   } catch (_) {
     platformsList.value = []
     platformOptions.value = []
@@ -720,7 +720,7 @@ async function loadInstalledList() {
   }
 }
 
-async function removeInstalledItem(row) {
+async function removeInstalledItem(row: any) {
   const key = installedItemKey(row)
   removingInstalledKey.value = key
   try {
