@@ -103,9 +103,8 @@ watch(
 async function fetchPreviewUrl() {
   loading.value = true
   try {
-    const expires = computeExpires(props.kind, props.sizeBytes || 0)
     const { data } = await api.get('/drive/preview-url', {
-      params: { path: props.path, expires },
+      params: { path: props.path },
       silentError: true,
     } as any)
     previewUrl.value = String(data?.url || '')
@@ -113,13 +112,6 @@ async function fetchPreviewUrl() {
   } finally {
     loading.value = false
   }
-}
-
-function computeExpires(kind: PreviewKind, size: number) {
-  // Backend defaults by file size, but frontend can hint a longer value.
-  if (kind === 'video' && size >= 1024 * 1024 * 1024) return 3 * 60 * 60
-  if (kind === 'video' && size >= 200 * 1024 * 1024) return 2 * 60 * 60
-  return 60 * 60
 }
 
 function onDownload() {

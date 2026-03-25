@@ -105,3 +105,12 @@ export async function driveUserDownloadBlob(path: string) {
   return res.data as Blob
 }
 
+export async function driveUserGetPreviewUrl(params: { path: string; expires?: number }) {
+  const res = await api.get('/drive/preview-url', {
+    params,
+    headers: driveUserHeaders(),
+    silentError: true,
+  } as any)
+  return res.data as { ok?: boolean; url?: string; expires_in?: number }
+}
+

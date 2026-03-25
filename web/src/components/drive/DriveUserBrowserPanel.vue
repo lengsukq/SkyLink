@@ -18,11 +18,13 @@
             </n-space>
             <n-space align="center" :size="8">
               <n-button type="primary" :loading="loading" @click="refresh(true)">查询</n-button>
+              <n-button secondary @click="openMkdir">新建文件夹</n-button>
               <n-button secondary :disabled="!canUpload" @click="pickUpload">上传</n-button>
               <input ref="fileInput" type="file" class="hidden" multiple @change="onFilePicked" />
             </n-space>
             <n-space align="center" :size="8">
               <n-button secondary :disabled="!selectedPaths.length" @click="batchDelete">删除</n-button>
+              <n-button secondary :disabled="!clipboardCut" @click="pasteCut">粘贴</n-button>
               <n-button secondary @click="logout">退出</n-button>
             </n-space>
           </n-space>
@@ -54,17 +56,54 @@
           </n-space>
         </n-card>
 
-        <n-data-table
-          :columns="columns"
-          :data="rows"
-          :bordered="false"
-          size="small"
-          :single-line="false"
-          :loading="loading"
-          :row-key="rowKey"
-          :checked-row-keys="selectedPaths"
-          @update:checked-row-keys="onChecked"
-        />
+        <div class="content">
+          <div class="table">
+            <n-space align="center" justify="space-between" class="view-toggle">
+              <div class="view-title">文件</div>
+              <n-space :size="8">
+                <n-button size="small" secondary :type="viewMode === 'list' ? 'primary' : 'default'" @click="viewMode = 'list'">
+                  列表
+                </n-button>
+                <n-button size="small" secondary :type="viewMode === 'grid' ? 'primary' : 'default'" @click="viewMode = 'grid'">
+                  网格
+                </n-button>
+              </n-space>
+            </n-space>
+
+            <drive-grid-view
+              v-if="viewMode === 'grid'"
+              :items="rows"
+              @open="openOrEnter"
+              @select="(item) => (selectedPaths = [item.path])"
+              @context="onGridContext"
+            />
+
+            <n-data-table
+              v-else
+              :columns="columns"
+              :data="rows"
+              :bordered="false"
+              size="small"
+              :single-line="false"
+              :loading="loading"
+              :row-key="rowKey"
+              :checked-row-keys="selectedPaths"
+              :row-props="rowProps"
+              @update:checked-row-keys="onChecked"
+            />
+          </div>
+          <div class="details">
+            <drive-details-sidebar
+              :item="selectedItem"
+              @preview="selectedItem && openPreview(selectedItem)"
+              @download="selectedItem && download(selectedItem)"
+              @delete="selectedItem && remove(selectedItem)"
+              @rename="selectedItem && openRename(selectedItem)"
+              @cut="selectedItem && cut(selectedItem)"
+              @copy-path="selectedItem && copyPath(selectedItem)"
+            />
+          </div>
+        </div>
       </n-space>
     </div>
   </div>
@@ -76,6 +115,37 @@
     :kind="previewKind"
     :size-bytes="previewItem?.size_bytes || 0"
   />
+
+  <n-dropdown
+    placement="bottom-start"
+    trigger="manual"
+    :x="ctx.x"
+    :y="ctx.y"
+    :options="ctxOptions"
+    :show="ctx.show"
+    @select="onCtxSelect"
+    @clickoutside="ctx.show = false"
+  />
+
+  <n-modal v-model:show="renameModal" preset="card" title="重命名" style="max-width: 520px">
+    <n-input v-model:value="renameValue" placeholder="新名称" />
+    <template #footer>
+      <n-space justify="end">
+        <n-button @click="renameModal = false">取消</n-button>
+        <n-button type="primary" :loading="renaming" @click="confirmRename">确定</n-button>
+      </n-space>
+    </template>
+  </n-modal>
+
+  <n-modal v-model:show="mkdirModal" preset="card" title="新建文件夹" style="max-width: 520px">
+    <n-input v-model:value="mkdirValue" placeholder="文件夹名称" />
+    <template #footer>
+      <n-space justify="end">
+        <n-button @click="mkdirModal = false">取消</n-button>
+        <n-button type="primary" :loading="mkdiring" @click="confirmMkdir">确定</n-button>
+      </n-space>
+    </template>
+  </n-modal>
 </template>
 
 <script setup lang="ts">
@@ -87,8 +157,10 @@ import {
   NButton,
   NCard,
   NDataTable,
+  NDropdown,
   NInput,
   NMenu,
+  NModal,
   NProgress,
   NSelect,
   NSpace,
@@ -97,9 +169,12 @@ import {
 import { STORAGE_KEYS } from '../../constants/storage'
 import { ROUTE_PATHS } from '../../constants/routes'
 import { notifyError, notifySuccess } from '../../ui/notify'
+import { copyToClipboard } from '../../utils/clipboard'
 import { formatBytes } from '../../utils/storage'
-import { driveUserDelete, driveUserDownloadBlob, driveUserListEntries, driveUserUpload } from '../../api/driveUserClient'
+import { driveUserDelete, driveUserDownloadBlob, driveUserListEntries, driveUserMkdir, driveUserRename, driveUserUpload } from '../../api/driveUserClient'
 import DrivePreviewModal from './DrivePreviewModal.vue'
+import DriveDetailsSidebar from './fm/DriveDetailsSidebar.vue'
+import DriveGridView from './fm/DriveGridView.vue'
 
 type DriveFileItem = {
   name: string
@@ -168,6 +243,14 @@ const canLoadMore = computed(() => hasMore.value && !loading.value)
 const canUpload = computed(() => !!(localStorage.getItem(STORAGE_KEYS.driveUserToken) || '').trim() && !loading.value)
 
 const rowKey = (row: DriveFileItem) => row.path
+
+const selectedItem = computed(() => {
+  const key = selectedPaths.value?.[0]
+  if (!key) return null
+  return rows.value.find((r) => r.path === key) || null
+})
+
+const viewMode = ref<'list' | 'grid'>('list')
 
 const columns = computed(() => [
   { type: 'selection' as const, width: 40 },
@@ -252,6 +335,27 @@ const columns = computed(() => [
     },
   },
 ])
+
+function rowProps(row: DriveFileItem) {
+  return {
+    onDblclick: () => {
+      if (row.is_dir) goTo(row.path)
+      else openPreview(row)
+    },
+    onContextmenu: (e: MouseEvent) => {
+      e.preventDefault()
+      ctx.value.item = row
+      ctx.value.x = e.clientX
+      ctx.value.y = e.clientY
+      ctx.value.show = true
+      selectedPaths.value = [row.path]
+    },
+    onClick: () => {
+      // Keep selection in sync with details panel.
+      selectedPaths.value = [row.path]
+    },
+  }
+}
 
 async function refresh(reset: boolean) {
   loading.value = true
@@ -415,6 +519,14 @@ function openPreview(row: DriveFileItem) {
   previewOpen.value = true
 }
 
+function openOrEnter(item: DriveFileItem) {
+  if (item.is_dir) {
+    goTo(item.path)
+    return
+  }
+  openPreview(item)
+}
+
 const previewKind = computed(() => {
   const r = previewItem.value
   if (!r) return 'unknown'
@@ -424,6 +536,134 @@ const previewKind = computed(() => {
   if (r.ext?.toLowerCase?.() === 'pdf') return 'pdf'
   return 'unknown'
 })
+
+const ctx = ref<{ show: boolean; x: number; y: number; item: DriveFileItem | null }>({
+  show: false,
+  x: 0,
+  y: 0,
+  item: null,
+})
+
+const ctxOptions = computed(() => {
+  const item = ctx.value.item
+  const isFile = !!item && !item.is_dir
+  return [
+    { label: '预览', key: 'preview', disabled: !isFile },
+    { label: '下载', key: 'download', disabled: !isFile },
+    { label: '复制路径', key: 'copy-path', disabled: !item },
+    { label: '重命名', key: 'rename', disabled: !item },
+    { label: '剪切', key: 'cut', disabled: !item },
+    { label: '删除', key: 'delete', disabled: !item },
+  ]
+})
+
+function onCtxSelect(key: string) {
+  const item = ctx.value.item
+  ctx.value.show = false
+  if (!item) return
+  if (key === 'preview') openPreview(item)
+  if (key === 'download') download(item)
+  if (key === 'delete') remove(item)
+  if (key === 'rename') openRename(item)
+  if (key === 'cut') cut(item)
+  if (key === 'copy-path') copyPath(item)
+}
+
+function onGridContext(item: DriveFileItem, e: MouseEvent) {
+  ctx.value.item = item
+  ctx.value.x = e.clientX
+  ctx.value.y = e.clientY
+  ctx.value.show = true
+  selectedPaths.value = [item.path]
+}
+
+function cut(item: DriveFileItem) {
+  clipboardCut.value = item.path
+  notifySuccess('已剪切', item.name)
+}
+
+const clipboardCut = ref<string>('')
+
+async function pasteCut() {
+  const from = clipboardCut.value
+  if (!from) return
+  const name = from.includes('/') ? from.split('/').pop() || '' : from
+  const base = path.value ? path.value.replace(/\/+$/, '') : ''
+  const to = base ? `${base}/${name}` : name
+  try {
+    await driveUserRename(from, to)
+    clipboardCut.value = ''
+    notifySuccess('已移动', name)
+    await refresh(true)
+  } catch (e: any) {
+    notifyError('移动失败', e?.response?.data?.error || e?.message || String(e))
+  }
+}
+
+async function copyPath(item: DriveFileItem) {
+  try {
+    await copyToClipboard(item.path)
+    notifySuccess('已复制', '路径已复制到剪贴板')
+  } catch (e: any) {
+    notifyError('复制失败', e?.message || String(e))
+  }
+}
+
+const renameModal = ref(false)
+const renaming = ref(false)
+const renameItem = ref<DriveFileItem | null>(null)
+const renameValue = ref('')
+
+function openRename(item: DriveFileItem) {
+  renameItem.value = item
+  renameValue.value = item.name
+  renameModal.value = true
+}
+
+async function confirmRename() {
+  const item = renameItem.value
+  const nextName = renameValue.value.trim()
+  if (!item || !nextName) return
+  const parent = item.path.includes('/') ? item.path.split('/').slice(0, -1).join('/') : ''
+  const to = parent ? `${parent}/${nextName}` : nextName
+  renaming.value = true
+  try {
+    await driveUserRename(item.path, to)
+    notifySuccess('已重命名', nextName)
+    renameModal.value = false
+    await refresh(true)
+  } catch (e: any) {
+    notifyError('重命名失败', e?.response?.data?.error || e?.message || String(e))
+  } finally {
+    renaming.value = false
+  }
+}
+
+const mkdirModal = ref(false)
+const mkdirValue = ref('')
+const mkdiring = ref(false)
+
+function openMkdir() {
+  mkdirValue.value = ''
+  mkdirModal.value = true
+}
+
+async function confirmMkdir() {
+  const name = mkdirValue.value.trim()
+  if (!name) return
+  const target = path.value ? `${path.value.replace(/\/+$/, '')}/${name}` : name
+  mkdiring.value = true
+  try {
+    await driveUserMkdir(target)
+    notifySuccess('已创建', name)
+    mkdirModal.value = false
+    await refresh(true)
+  } catch (e: any) {
+    notifyError('创建失败', e?.response?.data?.error || e?.message || String(e))
+  } finally {
+    mkdiring.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -439,6 +679,24 @@ const previewKind = computed(() => {
 }
 .main {
   min-width: 0;
+}
+.content {
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  gap: 12px;
+  align-items: start;
+}
+.table {
+  min-width: 0;
+}
+.details {
+  min-width: 0;
+}
+.view-toggle {
+  margin-bottom: 8px;
+}
+.view-title {
+  font-weight: 600;
 }
 .toolbar {
   padding: 8px 0 2px;
