@@ -118,7 +118,9 @@ const cfAccountOptions = computed(() =>
   }))
 )
 
-const isLoginPage = computed(() => route.path === ROUTE_PATHS.login)
+const isLoginPage = computed(
+  () => route.path === ROUTE_PATHS.login || route.path === ROUTE_PATHS.driveLogin || route.path === ROUTE_PATHS.drivePortal,
+)
 
 function isActive(path: string) {
   return route.path === path

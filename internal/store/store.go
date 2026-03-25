@@ -86,11 +86,58 @@ CREATE TABLE IF NOT EXISTS smb_mappings (
 	updated_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS drive_accounts (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	username TEXT NOT NULL UNIQUE,
+	password_hash TEXT NOT NULL,
+	root_path TEXT NOT NULL,
+	quota_bytes INTEGER NOT NULL DEFAULT 0,
+	used_bytes INTEGER NOT NULL DEFAULT 0,
+	enabled INTEGER NOT NULL DEFAULT 1,
+	last_used_at INTEGER,
+	created_at INTEGER NOT NULL,
+	updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS drive_entries (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	account_id INTEGER NOT NULL,
+	path TEXT NOT NULL,
+	parent_path TEXT NOT NULL DEFAULT '',
+	name TEXT NOT NULL,
+	ext TEXT NOT NULL DEFAULT '',
+	type TEXT NOT NULL DEFAULT 'other',
+	is_dir INTEGER NOT NULL DEFAULT 0,
+	size_bytes INTEGER NOT NULL DEFAULT 0,
+	modified_at INTEGER NOT NULL DEFAULT 0,
+	deleted_at INTEGER,
+	created_at INTEGER NOT NULL,
+	updated_at INTEGER NOT NULL,
+	UNIQUE(account_id, path)
+);
+
+CREATE TABLE IF NOT EXISTS drive_audit_logs (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	account_id INTEGER NOT NULL,
+	action TEXT NOT NULL,
+	path TEXT NOT NULL DEFAULT '',
+	ip TEXT NOT NULL DEFAULT '',
+	created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_drive_audit_logs_account_at ON drive_audit_logs(account_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_drive_entries_account_parent_path ON drive_entries(account_id, parent_path);
+CREATE INDEX IF NOT EXISTS idx_drive_entries_account_type ON drive_entries(account_id, type);
+CREATE INDEX IF NOT EXISTS idx_drive_entries_account_name ON drive_entries(account_id, name);
+CREATE INDEX IF NOT EXISTS idx_drive_entries_account_mtime ON drive_entries(account_id, modified_at);
+
 CREATE INDEX IF NOT EXISTS idx_mappings_host ON mappings(host);
 CREATE INDEX IF NOT EXISTS idx_webdev_services_name ON webdev_services(name);
 CREATE INDEX IF NOT EXISTS idx_webdav_mappings_name ON webdav_mappings(name);
 CREATE INDEX IF NOT EXISTS idx_smb_mappings_name ON smb_mappings(name);
 CREATE INDEX IF NOT EXISTS idx_smb_mappings_share_name ON smb_mappings(share_name);
+CREATE INDEX IF NOT EXISTS idx_drive_accounts_username ON drive_accounts(username);
 `
 
 // Store SQLite 存储
@@ -117,6 +164,10 @@ func New(dbPath string) (*Store, error) {
 		return nil, err
 	}
 	if err := migrateSMBGrantAccount(db); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := migrateDriveAccountsV2(db); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -148,6 +199,140 @@ func migrateSMBGrantAccount(db *sql.DB) error {
 		return err
 	}
 	return err
+}
+
+// migrateDriveAccountsV2 将旧版 drive_accounts(token_sha256) 迁移为 username/password_hash 账号体系。
+// 迁移后旧 token 方式不可用；管理员需要为账号设置/重置密码。
+func migrateDriveAccountsV2(db *sql.DB) error {
+	// If table doesn't exist yet, schema already created the new version.
+	// If it exists, inspect columns.
+	cols, err := tableColumns(db, "drive_accounts")
+	if err != nil {
+		return err
+	}
+	if len(cols) == 0 {
+		return nil
+	}
+	if cols["password_hash"] {
+		return nil // already new schema
+	}
+	if !cols["token_sha256"] || !cols["name"] {
+		// Unknown/partial state; do nothing to avoid destructive actions.
+		return nil
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec(`
+CREATE TABLE IF NOT EXISTS drive_accounts_v2 (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  root_path TEXT NOT NULL,
+  quota_bytes INTEGER NOT NULL DEFAULT 0,
+  used_bytes INTEGER NOT NULL DEFAULT 0,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  last_used_at INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_drive_accounts_v2_username ON drive_accounts_v2(username);
+`)
+	if err != nil {
+		return err
+	}
+
+	type row struct {
+		id         int64
+		name       string
+		rootPath   string
+		quotaBytes int64
+		usedBytes  int64
+		enabled    int
+		lastUsed   sql.NullInt64
+		createdAt  int64
+		updatedAt  int64
+	}
+
+	rows, err := tx.Query(`
+SELECT id, name, root_path, quota_bytes, used_bytes, enabled, last_used_at, created_at, updated_at
+FROM drive_accounts
+ORDER BY id`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	seen := map[string]bool{}
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.id, &r.name, &r.rootPath, &r.quotaBytes, &r.usedBytes, &r.enabled, &r.lastUsed, &r.createdAt, &r.updatedAt); err != nil {
+			return err
+		}
+		username := strings.TrimSpace(r.name)
+		if username == "" {
+			username = fmt.Sprintf("user-%d", r.id)
+		}
+		// Ensure uniqueness in target table (case-insensitive collisions on Windows).
+		base := username
+		i := 1
+		for seen[strings.ToLower(username)] {
+			i++
+			username = fmt.Sprintf("%s-%d", base, i)
+		}
+		seen[strings.ToLower(username)] = true
+
+		var lastUsed any = nil
+		if r.lastUsed.Valid {
+			lastUsed = r.lastUsed.Int64
+		}
+		// password_hash intentionally empty -> must be reset by admin.
+		if _, err := tx.Exec(
+			`INSERT INTO drive_accounts_v2 (id, username, password_hash, root_path, quota_bytes, used_bytes, enabled, last_used_at, created_at, updated_at)
+			 VALUES (?, ?, '', ?, ?, ?, ?, ?, ?, ?)`,
+			r.id, username, r.rootPath, r.quotaBytes, r.usedBytes, r.enabled, lastUsed, r.createdAt, r.updatedAt,
+		); err != nil {
+			return err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`DROP TABLE drive_accounts`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`ALTER TABLE drive_accounts_v2 RENAME TO drive_accounts`); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func tableColumns(db *sql.DB, table string) (map[string]bool, error) {
+	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		// table likely does not exist
+		return map[string]bool{}, nil
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name string
+		var ctype string
+		var notnull int
+		var dflt sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return nil, err
+		}
+		out[name] = true
+	}
+	return out, rows.Err()
 }
 
 // Close 关闭数据库

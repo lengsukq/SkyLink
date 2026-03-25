@@ -1,5 +1,7 @@
 export const ROUTE_PATHS = {
   login: '/login',
+  driveLogin: '/drive-login',
+  drivePortal: '/drive',
   root: '/',
   dashboard: '/dashboard',
   mappings: '/mappings',

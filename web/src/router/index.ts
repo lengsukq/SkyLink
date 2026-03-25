@@ -4,6 +4,8 @@ import { STORAGE_KEYS } from '../constants/storage'
 
 const routes = [
   { path: ROUTE_PATHS.login, name: 'Login', component: () => import('../views/Login.vue') },
+  { path: ROUTE_PATHS.driveLogin, name: 'DriveLogin', component: () => import('../views/DriveLogin.vue') },
+  { path: ROUTE_PATHS.drivePortal, name: 'DrivePortal', component: () => import('../views/DrivePortal.vue') },
   { path: ROUTE_PATHS.root, redirect: ROUTE_PATHS.dashboard },
   { path: ROUTE_PATHS.dashboard, name: 'Dashboard', component: () => import('../views/Dashboard.vue') },
   { path: ROUTE_PATHS.mappings, name: 'Mappings', component: () => import('../views/Mappings.vue') },
@@ -28,6 +30,14 @@ const router = createRouter({
 })
 
 router.beforeEach((to) => {
+  // Drive user portal is independent from admin auth.
+  if (to.path === ROUTE_PATHS.driveLogin) return true
+  if (to.path === ROUTE_PATHS.drivePortal) {
+    const driveToken = localStorage.getItem(STORAGE_KEYS.driveUserToken) || ''
+    if (!driveToken.trim()) return { path: ROUTE_PATHS.driveLogin }
+    return true
+  }
+
   const token = localStorage.getItem(STORAGE_KEYS.skylinkToken) || ''
   if (to.path === ROUTE_PATHS.login) return true
   if (!token.trim()) return { path: ROUTE_PATHS.login }

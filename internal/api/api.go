@@ -18,6 +18,7 @@ import (
 	"github.com/skylink/skylink/internal/cloudflare"
 	"github.com/skylink/skylink/internal/config"
 	"github.com/skylink/skylink/internal/ddns"
+	"github.com/skylink/skylink/internal/drive/indexer"
 	"github.com/skylink/skylink/internal/easytier"
 	"github.com/skylink/skylink/internal/proxy"
 	"github.com/skylink/skylink/internal/security"
@@ -54,6 +55,9 @@ type Server struct {
 	easyTierRuntime *easytier.RuntimeDownloader
 
 	cfAccountService *service.CFAccountService
+
+	driveJWTSecret string
+	driveIndexer   *indexer.Manager
 }
 
 // New 创建 API 服务；staticFS 可为 nil（不提供 GUI 时）；easyTierEnvPath 为 EasyTier env 文件默认路径，空则仅从 store 读配置不写文件
@@ -67,7 +71,9 @@ func New(st *store.Store, pr *proxy.Proxy, cf *cloudflare.Client, staticFS fs.FS
 		easyTierCfg:      etCfg,
 		easyTierRuntime:  etRuntime,
 		cfAccountService: service.NewCFAccountService(st),
+		driveIndexer:     indexer.NewManager(),
 	}
+	s.initDriveJWTSecret()
 	hash, err := st.GetAdminPasswordHash()
 	if err != nil {
 		log.Printf("load admin password hash failed: %v", err)
@@ -109,6 +115,22 @@ func New(st *store.Store, pr *proxy.Proxy, cf *cloudflare.Client, staticFS fs.FS
 	return s
 }
 
+func (s *Server) initDriveJWTSecret() {
+	const key = "drive.jwt_secret"
+	if v, err := s.store.GetSetting(key); err == nil && strings.TrimSpace(v) != "" {
+		s.driveJWTSecret = strings.TrimSpace(v)
+		return
+	}
+	sec, err := security.GeneratePassword(48)
+	if err != nil {
+		// fallback: process-only secret (tokens invalid after restart)
+		s.driveJWTSecret = "skylink-drive-secret"
+		return
+	}
+	s.driveJWTSecret = sec
+	_ = s.store.SetSetting(key, sec)
+}
+
 // Handler 返回 Gin Engine，供挂载到 admin 端口；若需鉴权则中间件校验 secret
 func (s *Server) Handler() http.Handler {
 	r := gin.New()
@@ -118,7 +140,33 @@ func (s *Server) Handler() http.Handler {
 	r.POST("/api/auth/login", s.login)
 	r.POST("/api/auth/password", s.changePassword)
 
+	// Drive 用户登录（独立于管理员登录）
+	r.POST("/api/drive/auth/login", s.driveLogin)
+
 	r.Use(s.authMiddleware())
+
+	// Drive（个人网盘）
+	// drive 文件接口使用独立 token 鉴权（不复用管理员密码）；账号管理仍需管理员鉴权。
+	driveAdmin := r.Group("/api/drive/accounts", s.requireAdmin())
+	driveAdmin.GET("", s.listDriveAccounts)
+	driveAdmin.POST("", s.createDriveAccount)
+	driveAdmin.PUT("/:id", s.updateDriveAccount)
+	driveAdmin.DELETE("/:id", s.deleteDriveAccount)
+	driveAdmin.POST("/:id/reset-password", s.resetDriveAccountPassword)
+	driveAdmin.POST("/:id/recount-used", s.recountDriveAccountUsed)
+	driveAdmin.POST("/:id/index/rebuild", s.driveIndexRebuild)
+	driveAdmin.GET("/:id/index/status", s.driveIndexStatus)
+
+	driveAPI := r.Group("/api/drive", s.driveAuthMiddleware())
+	driveAPI.GET("/files", s.driveListFiles)
+	driveAPI.GET("/entries", s.driveListEntries)
+	driveAPI.GET("/preview-url", s.drivePreviewURL)
+	driveAPI.POST("/folders", s.driveMkdir)
+	driveAPI.POST("/rename", s.driveRename)
+	driveAPI.DELETE("/files", s.driveDelete)
+	driveAPI.POST("/upload", s.driveUpload)
+	driveAPI.GET("/download", s.driveDownload)
+	r.GET("/api/drive/preview", s.drivePreviewServe)
 
 	// 映射
 	r.GET("/api/mappings", s.listMappings)
@@ -232,6 +280,11 @@ func (s *Server) authMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 静态资源与前端路由不需要鉴权；只保护 /api/*
 		if !strings.HasPrefix(c.Request.URL.Path, "/api/") {
+			c.Next()
+			return
+		}
+		// Drive 文件接口使用独立 token 鉴权；Drive 账号管理由路由组中间件保护。
+		if strings.HasPrefix(c.Request.URL.Path, "/api/drive/") {
 			c.Next()
 			return
 		}

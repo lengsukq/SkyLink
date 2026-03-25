@@ -18,6 +18,9 @@
         <n-tab-pane name="smb" tab="SMB">
           <smb-view />
         </n-tab-pane>
+        <n-tab-pane name="drive" tab="个人网盘">
+          <personal-drive-view />
+        </n-tab-pane>
       </n-tabs>
     </n-card>
   </div>
@@ -29,6 +32,7 @@ import { NAlert, NCard, NTabs, NTabPane } from 'naive-ui'
 import PageHeader from '../components/PageHeader.vue'
 import StorageVolumesPanel from '../components/StorageVolumesPanel.vue'
 import SmbView from './Smb.vue'
+import PersonalDriveView from './PersonalDrive.vue'
 
 const activeTab = ref('smb')
 </script>
