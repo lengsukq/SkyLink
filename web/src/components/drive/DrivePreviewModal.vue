@@ -45,9 +45,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { NButton, NModal, NSelect, NSpace, NSpin } from 'naive-ui'
-import api from '../../api/client'
-
-type PreviewKind = 'image' | 'video' | 'audio' | 'pdf' | 'unknown'
+import { DRIVE_VIDEO_RATE_OPTIONS } from '../../constants/drive'
+import type { PreviewKind } from '../../types/drive'
+import { useDrivePreviewUrl } from '../../composables/drive/useDrivePreviewUrl'
 
 const props = defineProps<{
   modelValue: boolean
@@ -66,32 +66,15 @@ const show = computed({
 
 const title = computed(() => `预览：${props.name}`)
 
-const loading = ref(false)
-const previewUrl = ref('')
-const imgLoading = ref(false)
+const { loading, previewUrl, imgLoading, canDownload } = useDrivePreviewUrl({
+  open: () => props.modelValue,
+  path: () => props.path,
+  kind: () => props.kind,
+})
 
 const videoEl = ref<HTMLVideoElement | null>(null)
 const playbackRate = ref<number>(1)
-const rateOptions = [
-  { label: '0.5x', value: 0.5 },
-  { label: '1x', value: 1 },
-  { label: '1.25x', value: 1.25 },
-  { label: '1.5x', value: 1.5 },
-  { label: '2x', value: 2 },
-]
-
-const canDownload = computed(() => !!props.path && !!props.name)
-
-watch(
-  () => [props.modelValue, props.path, props.kind] as const,
-  async ([open]) => {
-    if (!open) {
-      previewUrl.value = ''
-      return
-    }
-    await fetchPreviewUrl()
-  },
-)
+const rateOptions = DRIVE_VIDEO_RATE_OPTIONS
 
 watch(
   () => playbackRate.value,
@@ -99,20 +82,6 @@ watch(
     if (videoEl.value) videoEl.value.playbackRate = Number(v) || 1
   },
 )
-
-async function fetchPreviewUrl() {
-  loading.value = true
-  try {
-    const { data } = await api.get('/drive/preview-url', {
-      params: { path: props.path },
-      silentError: true,
-    } as any)
-    previewUrl.value = String(data?.url || '')
-    imgLoading.value = props.kind === 'image' && !!previewUrl.value
-  } finally {
-    loading.value = false
-  }
-}
 
 function onDownload() {
   const u = new URL('/api/drive/download', window.location.origin)

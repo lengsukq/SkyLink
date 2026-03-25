@@ -30,16 +30,8 @@
 import { reactive, watch } from 'vue'
 import { NSpin } from 'naive-ui'
 import { driveUserGetPreviewUrl } from '../../../api/driveUserClient'
-
-type DriveEntry = {
-  name: string
-  path: string
-  is_dir: boolean
-  size_bytes: number
-  modified_at: number
-  ext: string
-  type: string
-}
+import { DRIVE_GRID_THUMB_PREFETCH_WINDOW } from '../../../constants/drive'
+import type { DriveEntry } from '../../../types/drive'
 
 const props = defineProps<{ items: DriveEntry[] }>()
 defineEmits<{
@@ -55,7 +47,7 @@ watch(
   (items) => {
     resetState()
     // prefetch a small window
-    prefetch(items.slice(0, 24))
+    prefetch(items.slice(0, DRIVE_GRID_THUMB_PREFETCH_WINDOW))
   },
   { immediate: true },
 )

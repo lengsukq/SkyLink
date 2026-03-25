@@ -42,16 +42,7 @@
 <script setup lang="ts">
 import { NButton, NCard, NDivider, NSpace } from 'naive-ui'
 import { formatBytes } from '../../../utils/storage'
-
-type DriveEntry = {
-  name: string
-  path: string
-  is_dir: boolean
-  size_bytes: number
-  modified_at: number
-  ext: string
-  type: string
-}
+import type { DriveEntry } from '../../../types/drive'
 
 defineProps<{ item: DriveEntry | null }>()
 defineEmits<{

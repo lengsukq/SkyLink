@@ -2,7 +2,6 @@ package api
 
 import (
 	"errors"
-	"io"
 	"io/fs"
 	"net/http"
 	"os"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/skylink/skylink/internal/drive"
+	drivesvc "github.com/skylink/skylink/internal/drive/service"
 	"github.com/skylink/skylink/internal/store"
 )
 
@@ -38,12 +38,12 @@ func (s *Server) driveListFiles(c *gin.Context) {
 	typeFilter := strings.TrimSpace(c.Query("type"))
 	q := strings.TrimSpace(c.Query("q"))
 	offset := parseIntQuery(c.Query("offset"), 0)
-	limit := parseIntQuery(c.Query("limit"), 200)
+	limit := parseIntQuery(c.Query("limit"), driveListDefaultLimit)
 	if limit <= 0 {
-		limit = 200
+		limit = driveListDefaultLimit
 	}
-	if limit > 2000 {
-		limit = 2000
+	if limit > driveListMaxLimit {
+		limit = driveListMaxLimit
 	}
 	if offset < 0 {
 		offset = 0
@@ -217,34 +217,11 @@ func (s *Server) driveMkdir(c *gin.Context) {
 		driveError(c, http.StatusBadRequest, driveErrInvalidBody, "invalid body")
 		return
 	}
-	full, err := drive.ResolveWithinRoot(acc.RootPath, req.Path)
-	if err != nil {
+	svc := drivesvc.NewFilesService(s.store)
+	if err := svc.Mkdir(acc, req.Path, c.ClientIP()); err != nil {
 		driveError(c, http.StatusBadRequest, driveErrInvalidPath, "invalid path")
 		return
 	}
-	if err := os.MkdirAll(full, 0755); err != nil {
-		driveError(c, http.StatusInternalServerError, driveErrInternal, err.Error())
-		return
-	}
-	rel := drive.CleanUserPath(req.Path)
-	name := filepath.Base(filepath.FromSlash(rel))
-	parent := ""
-	if idx := strings.LastIndex(rel, "/"); idx >= 0 {
-		parent = rel[:idx]
-	}
-	_, t := drive.ClassifyFileTypeByName(name, true)
-	_ = s.store.UpsertDriveEntry(&store.DriveEntry{
-		AccountID:  acc.ID,
-		Path:       rel,
-		ParentPath: parent,
-		Name:       name,
-		Ext:        "",
-		Type:       string(t),
-		IsDir:      true,
-		SizeBytes:  0,
-		ModifiedAt: 0,
-	})
-	_ = s.store.AddDriveAuditLog(acc.ID, store.DriveAuditMkdir, rel, c.ClientIP())
 	driveOK(c, gin.H{})
 }
 
@@ -264,33 +241,11 @@ func (s *Server) driveRename(c *gin.Context) {
 		driveError(c, http.StatusBadRequest, driveErrInvalidBody, "invalid body")
 		return
 	}
-	fromFull, err := drive.ResolveWithinRoot(acc.RootPath, req.From)
-	if err != nil {
-		driveError(c, http.StatusBadRequest, driveErrInvalidPath, "invalid from")
+	svc := drivesvc.NewFilesService(s.store)
+	if err := svc.Rename(acc, req.From, req.To, c.ClientIP()); err != nil {
+		driveError(c, http.StatusBadRequest, driveErrInvalidPath, err.Error())
 		return
 	}
-	toFull, err := drive.ResolveWithinRoot(acc.RootPath, req.To)
-	if err != nil {
-		driveError(c, http.StatusBadRequest, driveErrInvalidPath, "invalid to")
-		return
-	}
-	if err := os.MkdirAll(filepath.Dir(toFull), 0755); err != nil {
-		driveError(c, http.StatusInternalServerError, driveErrInternal, err.Error())
-		return
-	}
-	if err := os.Rename(fromFull, toFull); err != nil {
-		driveError(c, http.StatusInternalServerError, driveErrInternal, err.Error())
-		return
-	}
-	// Best-effort index update: delete old prefix, then rebuild target subtree quickly by scanning filesystem.
-	fromRel := drive.CleanUserPath(req.From)
-	toRel := drive.CleanUserPath(req.To)
-	if fromRel != "" {
-		_ = s.store.DeleteDriveEntriesByPrefix(acc.ID, fromRel)
-	}
-	// Rebuild target subtree entries (dir or file).
-	_ = upsertEntryFromFS(s.store, acc, toRel)
-	_ = s.store.AddDriveAuditLog(acc.ID, store.DriveAuditRename, toRel, c.ClientIP())
 	driveOK(c, gin.H{})
 }
 
@@ -305,42 +260,16 @@ func (s *Server) driveDelete(c *gin.Context) {
 		driveError(c, http.StatusBadRequest, driveErrInvalidRequest, "path is required")
 		return
 	}
-	full, err := drive.ResolveWithinRoot(acc.RootPath, userPath)
-	if err != nil {
-		driveError(c, http.StatusBadRequest, driveErrInvalidPath, "invalid path")
-		return
-	}
-	info, err := os.Stat(full)
+	svc := drivesvc.NewFilesService(s.store)
+	freed, err := svc.Delete(acc, userPath, c.ClientIP())
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			driveError(c, http.StatusNotFound, driveErrNotFound, "not found")
 			return
 		}
-		driveError(c, http.StatusInternalServerError, driveErrInternal, err.Error())
+		driveError(c, http.StatusBadRequest, driveErrInvalidPath, err.Error())
 		return
 	}
-	var freed int64
-	if info.IsDir() {
-		freed, _ = computeDirSize(full)
-		if err := os.RemoveAll(full); err != nil {
-			driveError(c, http.StatusInternalServerError, driveErrInternal, err.Error())
-			return
-		}
-	} else {
-		freed = info.Size()
-		if err := os.Remove(full); err != nil {
-			driveError(c, http.StatusInternalServerError, driveErrInternal, err.Error())
-			return
-		}
-	}
-	if freed > 0 {
-		_ = s.store.AddDriveAccountUsedBytes(acc.ID, -freed)
-	}
-	rel := drive.CleanUserPath(userPath)
-	if rel != "" {
-		_ = s.store.DeleteDriveEntriesByPrefix(acc.ID, rel)
-	}
-	_ = s.store.AddDriveAuditLog(acc.ID, store.DriveAuditDelete, rel, c.ClientIP())
 	driveOK(c, gin.H{"freed_bytes": freed})
 }
 
@@ -350,127 +279,23 @@ func (s *Server) driveUpload(c *gin.Context) {
 		driveError(c, http.StatusUnauthorized, driveErrUnauthorized, "unauthorized")
 		return
 	}
-	// Refresh account for accurate quota/used check.
-	fresh, err := s.store.GetDriveAccount(acc.ID)
-	if err == nil && fresh != nil {
-		acc = fresh
-	}
-
 	targetDir := c.PostForm("path")
-	fullDir, err := drive.ResolveWithinRoot(acc.RootPath, targetDir)
-	if err != nil {
-		driveError(c, http.StatusBadRequest, driveErrInvalidPath, "invalid path")
-		return
-	}
-	if err := os.MkdirAll(fullDir, 0755); err != nil {
-		driveError(c, http.StatusInternalServerError, driveErrInternal, err.Error())
-		return
-	}
 	fh, err := c.FormFile("file")
 	if err != nil {
 		driveError(c, http.StatusBadRequest, driveErrInvalidRequest, "file is required")
 		return
 	}
-
-	filename := filepath.Base(fh.Filename)
-	if filename == "." || filename == string(filepath.Separator) || strings.TrimSpace(filename) == "" {
-		driveError(c, http.StatusBadRequest, driveErrInvalidRequest, "invalid filename")
-		return
-	}
-
-	if acc.QuotaBytes > 0 && fh.Size > 0 && acc.UsedBytes+fh.Size > acc.QuotaBytes {
-		driveError(c, http.StatusRequestEntityTooLarge, driveErrQuotaExceeded, "quota exceeded")
-		return
-	}
-
-	dstPath := filepath.Join(fullDir, filename)
-	dstPath = filepath.Clean(dstPath)
-	if !strings.HasPrefix(strings.ToLower(dstPath), strings.ToLower(filepath.Clean(fullDir))+string(filepath.Separator)) && strings.ToLower(dstPath) != strings.ToLower(fullDir) {
-		driveError(c, http.StatusBadRequest, driveErrInvalidPath, "invalid path")
-		return
-	}
-
-	src, err := fh.Open()
+	svc := drivesvc.NewFilesService(s.store)
+	written, err := svc.Upload(acc, targetDir, fh, c.ClientIP())
 	if err != nil {
-		driveError(c, http.StatusInternalServerError, driveErrInternal, err.Error())
+		if errors.Is(err, drive.ErrQuotaExceeded) {
+			driveError(c, http.StatusRequestEntityTooLarge, driveErrQuotaExceeded, "quota exceeded")
+			return
+		}
+		driveError(c, http.StatusBadRequest, driveErrInvalidRequest, err.Error())
 		return
 	}
-	defer src.Close()
-
-	tmpPath := dstPath + ".uploading"
-	out, err := os.Create(tmpPath)
-	if err != nil {
-		driveError(c, http.StatusInternalServerError, driveErrInternal, err.Error())
-		return
-	}
-	written, copyErr := io.Copy(out, src)
-	closeErr := out.Close()
-	if copyErr != nil {
-		_ = os.Remove(tmpPath)
-		driveError(c, http.StatusInternalServerError, driveErrInternal, copyErr.Error())
-		return
-	}
-	if closeErr != nil {
-		_ = os.Remove(tmpPath)
-		driveError(c, http.StatusInternalServerError, driveErrInternal, closeErr.Error())
-		return
-	}
-
-	if acc.QuotaBytes > 0 && written > 0 && acc.UsedBytes+written > acc.QuotaBytes {
-		_ = os.Remove(tmpPath)
-		driveError(c, http.StatusRequestEntityTooLarge, driveErrQuotaExceeded, "quota exceeded")
-		return
-	}
-
-	if err := os.Rename(tmpPath, dstPath); err != nil {
-		_ = os.Remove(tmpPath)
-		driveError(c, http.StatusInternalServerError, driveErrInternal, err.Error())
-		return
-	}
-	if written > 0 {
-		_ = s.store.AddDriveAccountUsedBytes(acc.ID, written)
-	}
-	relDir := drive.CleanUserPath(targetDir)
-	rel := filename
-	if relDir != "" {
-		rel = filepath.ToSlash(filepath.Join(relDir, filename))
-	}
-	_ = upsertEntryFromFS(s.store, acc, rel)
-	_ = s.store.AddDriveAuditLog(acc.ID, store.DriveAuditUpload, rel, c.ClientIP())
 	driveOK(c, gin.H{"written_bytes": written})
-}
-
-func upsertEntryFromFS(st *store.Store, acc *store.DriveAccount, rel string) error {
-	if st == nil || acc == nil {
-		return nil
-	}
-	rel = drive.CleanUserPath(rel)
-	full, err := drive.ResolveWithinRoot(acc.RootPath, rel)
-	if err != nil {
-		return err
-	}
-	info, err := os.Stat(full)
-	if err != nil {
-		return err
-	}
-	parent := ""
-	if idx := strings.LastIndex(rel, "/"); idx >= 0 {
-		parent = rel[:idx]
-	}
-	name := info.Name()
-	ext, t := drive.ClassifyFileTypeByName(name, info.IsDir())
-	entry := &store.DriveEntry{
-		AccountID:  acc.ID,
-		Path:       rel,
-		ParentPath: parent,
-		Name:       name,
-		Ext:        ext,
-		Type:       string(t),
-		IsDir:      info.IsDir(),
-		SizeBytes:  info.Size(),
-		ModifiedAt: info.ModTime().Unix(),
-	}
-	return st.UpsertDriveEntry(entry)
 }
 
 func (s *Server) driveDownload(c *gin.Context) {
@@ -504,25 +329,6 @@ func (s *Server) driveDownload(c *gin.Context) {
 	}
 	_ = s.store.AddDriveAuditLog(acc.ID, store.DriveAuditDownload, drive.CleanUserPath(userPath), c.ClientIP())
 	c.File(full)
-}
-
-func computeDirSize(root string) (int64, error) {
-	var total int64
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			return nil
-		}
-		info, e := d.Info()
-		if e != nil {
-			return nil
-		}
-		total += info.Size()
-		return nil
-	})
-	return total, err
 }
 
 func parseBoolQuery(v string) bool {

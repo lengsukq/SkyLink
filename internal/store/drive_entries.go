@@ -100,77 +100,24 @@ func (s *Store) ListDriveEntries(p ListDriveEntriesParams) (ListDriveEntriesResu
 	if p.AccountID <= 0 {
 		return ListDriveEntriesResult{}, fmt.Errorf("account_id is required")
 	}
-	limit := p.Limit
-	if limit <= 0 {
-		limit = 200
-	}
-	if limit > 1000 {
-		limit = 1000
-	}
-	if p.Sort == "" {
-		p.Sort = DriveEntriesSortName
-	}
-	if p.Order == "" {
-		p.Order = DriveEntriesOrderAsc
+	limit, sortExpr, sortType, orderSQL, err := normalizeDriveEntriesListParams(&p)
+	if err != nil {
+		return ListDriveEntriesResult{}, err
 	}
 
-	sortExpr, sortType := driveEntriesSortExpr(p.Sort)
-	order := "ASC"
-	if strings.EqualFold(string(p.Order), "desc") {
-		order = "DESC"
-	}
-
-	where := []string{"account_id = ?"}
-	args := []any{p.AccountID}
-
-	if p.Recursive {
-		prefix := strings.TrimSpace(p.PathPrefix)
-		if prefix != "" {
-			prefix = strings.TrimSuffix(prefix, "/")
-			where = append(where, "(path = ? OR path LIKE ?)")
-			args = append(args, prefix, prefix+"/%")
-		}
-	} else {
-		where = append(where, "parent_path = ?")
-		args = append(args, strings.TrimSuffix(strings.TrimSpace(p.ParentPath), "/"))
-	}
-
-	if t := strings.TrimSpace(p.Type); t != "" {
-		where = append(where, "type = ?")
-		args = append(args, t)
-	}
-	if q := strings.TrimSpace(p.Query); q != "" {
-		where = append(where, "LOWER(name) LIKE ?")
-		args = append(args, "%"+strings.ToLower(q)+"%")
-	}
-	if !p.IncludeDirs {
-		where = append(where, "is_dir = 0")
-	}
+	where, args := buildDriveEntriesWhere(p)
 
 	cur, err := decodeDriveEntriesCursor(p.Cursor)
 	if err != nil {
 		return ListDriveEntriesResult{}, err
 	}
 	if cur != nil {
-		op := ">"
-		if order == "DESC" {
-			op = "<"
-		}
-		where = append(where, fmt.Sprintf("(%s %s ? OR (%s = ? AND id %s ?))", sortExpr, op, sortExpr, op))
-		args = append(args, cur.V, cur.V, cur.ID)
+		cursorWhere, cursorArgs := driveEntriesCursorWhere(orderSQL, sortExpr, cur)
+		where = append(where, cursorWhere)
+		args = append(args, cursorArgs...)
 	}
 
-	sqlQuery := fmt.Sprintf(
-		`SELECT id, account_id, path, parent_path, name, ext, type, is_dir, size_bytes, modified_at, created_at, updated_at
-		 FROM drive_entries
-		 WHERE %s
-		 ORDER BY is_dir DESC, %s %s, id %s
-		 LIMIT ?`,
-		strings.Join(where, " AND "),
-		sortExpr,
-		order,
-		order,
-	)
+	sqlQuery := driveEntriesSelectSQL(strings.Join(where, " AND "), sortExpr, orderSQL)
 	args = append(args, limit+1)
 
 	rows, err := s.db.Query(sqlQuery, args...)
@@ -205,6 +152,83 @@ func (s *Store) ListDriveEntries(p ListDriveEntriesParams) (ListDriveEntriesResu
 	}
 
 	return ListDriveEntriesResult{List: out, NextCursor: nextCursor}, nil
+}
+
+func normalizeDriveEntriesListParams(p *ListDriveEntriesParams) (limit int, sortExpr string, sortType string, orderSQL string, err error) {
+	limit = p.Limit
+	if limit <= 0 {
+		limit = 200
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+	if p.Sort == "" {
+		p.Sort = DriveEntriesSortName
+	}
+	if p.Order == "" {
+		p.Order = DriveEntriesOrderAsc
+	}
+
+	sortExpr, sortType = driveEntriesSortExpr(p.Sort)
+	orderSQL = "ASC"
+	if strings.EqualFold(string(p.Order), "desc") {
+		orderSQL = "DESC"
+	}
+	return limit, sortExpr, sortType, orderSQL, nil
+}
+
+func buildDriveEntriesWhere(p ListDriveEntriesParams) (where []string, args []any) {
+	where = []string{"account_id = ?"}
+	args = []any{p.AccountID}
+
+	if p.Recursive {
+		prefix := strings.TrimSpace(p.PathPrefix)
+		if prefix != "" {
+			prefix = strings.TrimSuffix(prefix, "/")
+			where = append(where, "(path = ? OR path LIKE ?)")
+			args = append(args, prefix, prefix+"/%")
+		}
+	} else {
+		where = append(where, "parent_path = ?")
+		args = append(args, strings.TrimSuffix(strings.TrimSpace(p.ParentPath), "/"))
+	}
+
+	if t := strings.TrimSpace(p.Type); t != "" {
+		where = append(where, "type = ?")
+		args = append(args, t)
+	}
+	if q := strings.TrimSpace(p.Query); q != "" {
+		where = append(where, "LOWER(name) LIKE ?")
+		args = append(args, "%"+strings.ToLower(q)+"%")
+	}
+	if !p.IncludeDirs {
+		where = append(where, "is_dir = 0")
+	}
+	return where, args
+}
+
+func driveEntriesCursorWhere(orderSQL string, sortExpr string, cur *driveEntriesCursor) (whereSQL string, args []any) {
+	op := ">"
+	if strings.EqualFold(orderSQL, "DESC") {
+		op = "<"
+	}
+	whereSQL = fmt.Sprintf("(%s %s ? OR (%s = ? AND id %s ?))", sortExpr, op, sortExpr, op)
+	args = []any{cur.V, cur.V, cur.ID}
+	return whereSQL, args
+}
+
+func driveEntriesSelectSQL(whereSQL string, sortExpr string, orderSQL string) string {
+	return fmt.Sprintf(
+		`SELECT id, account_id, path, parent_path, name, ext, type, is_dir, size_bytes, modified_at, created_at, updated_at
+		 FROM drive_entries
+		 WHERE %s
+		 ORDER BY is_dir DESC, %s %s, id %s
+		 LIMIT ?`,
+		whereSQL,
+		sortExpr,
+		orderSQL,
+		orderSQL,
+	)
 }
 
 func driveEntriesSortExpr(sort DriveEntriesSort) (expr string, sortType string) {

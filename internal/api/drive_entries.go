@@ -25,7 +25,7 @@ func (s *Server) driveListEntries(c *gin.Context) {
 	q := strings.TrimSpace(c.Query("q"))
 	sortBy := strings.TrimSpace(c.Query("sort"))
 	order := strings.TrimSpace(c.Query("order"))
-	limit := parseIntQuery(c.Query("limit"), 200)
+	limit := parseIntQuery(c.Query("limit"), driveEntriesDefaultLimit)
 	cursor := strings.TrimSpace(c.Query("cursor"))
 	includeDirs := parseBoolQuery(c.Query("include_dirs"))
 
