@@ -13,7 +13,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/skylink/skylink/internal/cloudflare"
@@ -22,6 +21,7 @@ import (
 	"github.com/skylink/skylink/internal/easytier"
 	"github.com/skylink/skylink/internal/proxy"
 	"github.com/skylink/skylink/internal/security"
+	"github.com/skylink/skylink/internal/service"
 	"github.com/skylink/skylink/internal/store"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -52,18 +52,21 @@ type Server struct {
 
 	// EasyTier runtime（自动下载 easytier-daemon）
 	easyTierRuntime *easytier.RuntimeDownloader
+
+	cfAccountService *service.CFAccountService
 }
 
 // New 创建 API 服务；staticFS 可为 nil（不提供 GUI 时）；easyTierEnvPath 为 EasyTier env 文件默认路径，空则仅从 store 读配置不写文件
 func New(st *store.Store, pr *proxy.Proxy, cf *cloudflare.Client, staticFS fs.FS, easyTierEnvPath string, etDaemons easytier.MultiDaemonManager, etCfg *config.EasyTier, etRuntime *easytier.RuntimeDownloader) *Server {
 	s := &Server{
-		store:           st,
-		proxy:           pr,
-		staticFS:        staticFS,
-		easyTierEnvPath: easyTierEnvPath,
-		easyTierDaemons: etDaemons,
-		easyTierCfg:     etCfg,
-		easyTierRuntime: etRuntime,
+		store:            st,
+		proxy:            pr,
+		staticFS:         staticFS,
+		easyTierEnvPath:  easyTierEnvPath,
+		easyTierDaemons:  etDaemons,
+		easyTierCfg:      etCfg,
+		easyTierRuntime:  etRuntime,
+		cfAccountService: service.NewCFAccountService(st),
 	}
 	hash, err := st.GetAdminPasswordHash()
 	if err != nil {
@@ -86,7 +89,7 @@ func New(st *store.Store, pr *proxy.Proxy, cf *cloudflare.Client, staticFS fs.FS
 			log.Printf("hash startup admin password failed: %v", err)
 		} else {
 			s.startupPasswordHash.Store(string(hashed))
-			log.Printf("SkyLink startup admin password (valid until restart): %s", pw)
+			log.Printf("SkyLink startup admin password generated (valid until restart).")
 		}
 	}
 
@@ -199,26 +202,26 @@ func (s *Server) Handler() http.Handler {
 	r.GET("/api/easytier/daemon/logs", s.getEasyTierDaemonLogs)
 
 	// WebDAV mappings + file route
-	r.GET("/api/webdav/mappings", s.listWebDevServices)
-	r.POST("/api/webdav/mappings", s.addWebDevService)
-	r.PUT("/api/webdav/mappings/:id", s.updateWebDevService)
-	r.DELETE("/api/webdav/mappings/:id", s.deleteWebDevService)
-	r.POST("/api/webdav/mappings/:id/start", s.startWebDevService)
-	r.POST("/api/webdav/mappings/:id/stop", s.stopWebDevService)
-	r.POST("/api/webdav/mappings/:id/restart", s.restartWebDevService)
-	r.GET("/api/webdav/mappings/:id/health", s.healthWebDevService)
+	r.GET("/api/webdav/mappings", s.listWebDavMappings)
+	r.POST("/api/webdav/mappings", s.addWebDavMapping)
+	r.PUT("/api/webdav/mappings/:id", s.updateWebDavMapping)
+	r.DELETE("/api/webdav/mappings/:id", s.deleteWebDavMapping)
+	r.POST("/api/webdav/mappings/:id/start", s.startWebDavMapping)
+	r.POST("/api/webdav/mappings/:id/stop", s.stopWebDavMapping)
+	r.POST("/api/webdav/mappings/:id/restart", s.restartWebDavMapping)
+	r.GET("/api/webdav/mappings/:id/health", s.healthWebDavMapping)
 	r.Any("/api/webdav/:id/*davPath", s.serveWebDAVByID)
 
 	// SMB mappings
-	r.GET("/api/smb/mappings", s.listSMBServices)
-	r.POST("/api/smb/mappings/sync-local", s.syncLocalSMBServices)
-	r.POST("/api/smb/mappings", s.addSMBService)
-	r.PUT("/api/smb/mappings/:id", s.updateSMBService)
-	r.DELETE("/api/smb/mappings/:id", s.deleteSMBService)
-	r.POST("/api/smb/mappings/:id/start", s.startSMBService)
-	r.POST("/api/smb/mappings/:id/stop", s.stopSMBService)
-	r.POST("/api/smb/mappings/:id/restart", s.restartSMBService)
-	r.GET("/api/smb/mappings/:id/health", s.healthSMBService)
+	r.GET("/api/smb/mappings", s.listSMBMappings)
+	r.POST("/api/smb/mappings/sync-local", s.syncLocalSMBMappings)
+	r.POST("/api/smb/mappings", s.addSMBMapping)
+	r.PUT("/api/smb/mappings/:id", s.updateSMBMapping)
+	r.DELETE("/api/smb/mappings/:id", s.deleteSMBMapping)
+	r.POST("/api/smb/mappings/:id/start", s.startSMBMapping)
+	r.POST("/api/smb/mappings/:id/stop", s.stopSMBMapping)
+	r.POST("/api/smb/mappings/:id/restart", s.restartSMBMapping)
+	r.GET("/api/smb/mappings/:id/health", s.healthSMBMapping)
 
 	// 其它路径回退到内嵌静态前端（SPA）
 	r.NoRoute(s.serveFrontend)
@@ -457,7 +460,7 @@ func (s *Server) StopEasyTierDaemon() {
 	if s.easyTierDaemons == nil || s.easyTierCfg == nil || !s.easyTierCfg.DaemonEnabled {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), serverShutdownTimeout)
 	defer cancel()
 	if err := s.easyTierDaemons.StopAll(ctx); err != nil {
 		log.Printf("stop EasyTier daemon failed: %v", err)
@@ -487,7 +490,7 @@ func (s *Server) maybeStartEasyTierDaemon() {
 		}
 		envPath := s.resolveEasyTierEnvPath(profile.ID, profile.Config.EnvFilePath)
 		daemonPath := s.resolveDaemonPath(context.Background(), profile.Config.ImageTag)
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), easyTierStartTimeout)
 		err := s.easyTierDaemons.Start(ctx, profile.ID, easytier.DaemonConfig{
 			BinaryPath: daemonPath,
 			EnvFile:    envPath,

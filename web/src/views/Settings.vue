@@ -80,6 +80,8 @@ import { NCard, NForm, NFormItem, NInput, NButton, NSpace, NSwitch, NGrid, NGi }
 import api from '../api/client'
 import { notifySuccess, notifyError } from '../ui/notify'
 import PageHeader from '../components/PageHeader.vue'
+import { STORAGE_KEYS } from '../constants/storage'
+import { ROUTE_PATHS } from '../constants/routes'
 
 const router = useRouter()
 const loading = ref(false)
@@ -106,7 +108,7 @@ async function changePassword() {
       old_password: pwForm.old_password.trim(),
       new_password: pwForm.new_password.trim(),
     })
-    localStorage.setItem('skylink_token', pwForm.new_password.trim())
+    localStorage.setItem(STORAGE_KEYS.skylinkToken, pwForm.new_password.trim())
     pwForm.old_password = ''
     pwForm.new_password = ''
     pwForm.confirm_password = ''
@@ -117,8 +119,8 @@ async function changePassword() {
 }
 
 function logout() {
-  localStorage.removeItem('skylink_token')
-  router.replace('/login')
+  localStorage.removeItem(STORAGE_KEYS.skylinkToken)
+  router.replace(ROUTE_PATHS.login)
 }
 
 async function loadDefaults() {

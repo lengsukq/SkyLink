@@ -26,6 +26,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { NCard, NProgress, NSpace } from 'naive-ui'
 import api from '../api/client'
+import { formatBytes, percentUsed } from '../utils/storage'
 
 defineProps({
   sectionClass: {
@@ -41,27 +42,6 @@ const loaded = ref(false)
 const visible = computed(
   () => loaded.value && supported.value && Array.isArray(volumes.value) && volumes.value.length > 0
 )
-
-function formatBytes(n) {
-  const num = Number(n) || 0
-  if (num === 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let i = 0
-  let x = num
-  while (x >= 1024 && i < units.length - 1) {
-    x /= 1024
-    i += 1
-  }
-  const frac = i === 0 ? 0 : 1
-  return `${x.toFixed(frac)} ${units[i]}`
-}
-
-function percentUsed(v) {
-  const t = Number(v.total_bytes) || 0
-  if (t <= 0) return 0
-  const u = Number(v.used_bytes) || 0
-  return Math.min(100, Math.round((u / t) * 1000) / 10)
-}
 
 onMounted(async () => {
   try {

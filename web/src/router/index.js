@@ -1,19 +1,21 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
+import { ROUTE_PATHS } from '../constants/routes'
+import { STORAGE_KEYS } from '../constants/storage'
 
 const routes = [
-  { path: '/login', name: 'Login', component: () => import('../views/Login.vue') },
-  { path: '/', redirect: '/dashboard' },
-  { path: '/dashboard', name: 'Dashboard', component: () => import('../views/Dashboard.vue') },
-  { path: '/mappings', name: 'Mappings', component: () => import('../views/Mappings.vue') },
-  { path: '/cloudflare-center', name: 'CloudflareCenter', component: () => import('../views/CloudflareCenter.vue') },
-  { path: '/cloudflare', redirect: '/cloudflare-center' },
-  { path: '/ddns', redirect: '/cloudflare-center' },
-  { path: '/easytier', name: 'EasyTier', component: () => import('../views/EasyTier.vue') },
-  { path: '/file-services', name: 'FileServices', component: () => import('../views/FileServices.vue') },
-  { path: '/windows-tools', name: 'WindowsTools', component: () => import('../views/WindowsTools.vue') },
-  { path: '/webdev', redirect: '/file-services' },
-  { path: '/smb', redirect: '/windows-tools' },
-  { path: '/settings', name: 'Settings', component: () => import('../views/Settings.vue') },
+  { path: ROUTE_PATHS.login, name: 'Login', component: () => import('../views/Login.vue') },
+  { path: ROUTE_PATHS.root, redirect: ROUTE_PATHS.dashboard },
+  { path: ROUTE_PATHS.dashboard, name: 'Dashboard', component: () => import('../views/Dashboard.vue') },
+  { path: ROUTE_PATHS.mappings, name: 'Mappings', component: () => import('../views/Mappings.vue') },
+  { path: ROUTE_PATHS.cloudflareCenter, name: 'CloudflareCenter', component: () => import('../views/CloudflareCenter.vue') },
+  { path: ROUTE_PATHS.cloudflareLegacy, redirect: ROUTE_PATHS.cloudflareCenter },
+  { path: ROUTE_PATHS.ddnsLegacy, redirect: ROUTE_PATHS.cloudflareCenter },
+  { path: ROUTE_PATHS.easyTier, name: 'EasyTier', component: () => import('../views/EasyTier.vue') },
+  { path: ROUTE_PATHS.fileServices, name: 'FileServices', component: () => import('../views/FileServices.vue') },
+  { path: ROUTE_PATHS.windowsTools, name: 'WindowsTools', component: () => import('../views/WindowsTools.vue') },
+  { path: ROUTE_PATHS.webDevLegacy, redirect: ROUTE_PATHS.fileServices },
+  { path: ROUTE_PATHS.smbLegacy, redirect: ROUTE_PATHS.windowsTools },
+  { path: ROUTE_PATHS.settings, name: 'Settings', component: () => import('../views/Settings.vue') },
 ]
 
 const router = createRouter({
@@ -22,9 +24,9 @@ const router = createRouter({
 })
 
 router.beforeEach((to) => {
-  const token = localStorage.getItem('skylink_token') || ''
-  if (to.path === '/login') return true
-  if (!token.trim()) return { path: '/login' }
+  const token = localStorage.getItem(STORAGE_KEYS.skylinkToken) || ''
+  if (to.path === ROUTE_PATHS.login) return true
+  if (!token.trim()) return { path: ROUTE_PATHS.login }
   return true
 })
 

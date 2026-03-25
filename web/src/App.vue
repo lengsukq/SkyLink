@@ -83,6 +83,7 @@ import NotifierBridge from './components/NotifierBridge.vue'
 import CfAccountFormModal from './components/CfAccountFormModal.vue'
 import api from './api/client'
 import { notifySuccess } from './ui/notify'
+import { ROUTE_PATHS } from './constants/routes'
 
 const themeOverrides = {
   common: {
@@ -100,13 +101,13 @@ const showCfAccountModal = ref(false)
 const isWindows = ref(false)
 
 const navItems = computed(() => [
-  { path: '/dashboard', label: '仪表盘' },
-  { path: '/mappings', label: '映射' },
-  { path: '/cloudflare-center', label: 'Cloudflare' },
-  { path: '/easytier', label: 'EasyTier' },
-  { path: '/file-services', label: '文件服务' },
-  ...(isWindows.value ? [{ path: '/windows-tools', label: 'Windows 工具' }] : []),
-  { path: '/settings', label: '设置' },
+  { path: ROUTE_PATHS.dashboard, label: '仪表盘' },
+  { path: ROUTE_PATHS.mappings, label: '映射' },
+  { path: ROUTE_PATHS.cloudflareCenter, label: 'Cloudflare' },
+  { path: ROUTE_PATHS.easyTier, label: 'EasyTier' },
+  { path: ROUTE_PATHS.fileServices, label: '文件服务' },
+  ...(isWindows.value ? [{ path: ROUTE_PATHS.windowsTools, label: 'Windows 工具' }] : []),
+  { path: ROUTE_PATHS.settings, label: '设置' },
 ])
 
 const cfAccountOptions = computed(() =>
@@ -116,7 +117,7 @@ const cfAccountOptions = computed(() =>
   }))
 )
 
-const isLoginPage = computed(() => route.path === '/login')
+const isLoginPage = computed(() => route.path === ROUTE_PATHS.login)
 
 function isActive(path) {
   return route.path === path
@@ -129,10 +130,10 @@ function go(path) {
 }
 
 function onClickManageAccounts() {
-  if (route.path !== '/cloudflare-center') {
-    router.push({ path: '/cloudflare-center', query: { manage: '1' } })
+  if (route.path !== ROUTE_PATHS.cloudflareCenter) {
+    router.push({ path: ROUTE_PATHS.cloudflareCenter, query: { manage: '1' } })
   } else {
-    router.push({ path: '/cloudflare-center', query: { manage: String(Date.now()) } })
+    router.push({ path: ROUTE_PATHS.cloudflareCenter, query: { manage: String(Date.now()) } })
   }
 }
 
@@ -151,6 +152,8 @@ async function fetchCfAccounts() {
   try {
     const { data } = await api.get('/cf/accounts')
     cfAccounts.value = data?.accounts || []
+  } catch (_) {
+    cfAccounts.value = []
   } finally {
     cfAccountsLoading.value = false
   }
@@ -195,7 +198,7 @@ provide('cfAccounts', cfAccounts)
 provide('refreshCfState', refreshCfState)
 
 onMounted(() => {
-  if (route.path !== '/login') {
+  if (route.path !== ROUTE_PATHS.login) {
     fetchSettings()
     fetchCfAccounts()
     fetchPlatformFlags()
@@ -205,7 +208,7 @@ onMounted(() => {
 watch(
   () => route.path,
   (path) => {
-    if (path !== '/login') {
+    if (path !== ROUTE_PATHS.login) {
       fetchSettings()
       fetchCfAccounts()
       fetchPlatformFlags()

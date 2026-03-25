@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -17,7 +16,7 @@ import (
 
 var smbShareNameRegexp = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
-func (s *Server) listSMBServices(c *gin.Context) {
+func (s *Server) listSMBMappings(c *gin.Context) {
 	list, err := s.store.ListSMBMappings()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -26,9 +25,8 @@ func (s *Server) listSMBServices(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"list": list})
 }
 
-func (s *Server) syncLocalSMBServices(c *gin.Context) {
-	if !isWindowsRuntime() {
-		c.JSON(http.StatusNotImplemented, gin.H{"error": "smb is only supported on windows"})
+func (s *Server) syncLocalSMBMappings(c *gin.Context) {
+	if !s.guardSMBWindows(c) {
 		return
 	}
 	localShares, err := smb.ListLocalShares()
@@ -100,9 +98,8 @@ func (s *Server) syncLocalSMBServices(c *gin.Context) {
 	})
 }
 
-func (s *Server) addSMBService(c *gin.Context) {
-	if !isWindowsRuntime() {
-		c.JSON(http.StatusNotImplemented, gin.H{"error": "smb is only supported on windows"})
+func (s *Server) addSMBMapping(c *gin.Context) {
+	if !s.guardSMBWindows(c) {
 		return
 	}
 	var req store.SMBMapping
@@ -110,7 +107,7 @@ func (s *Server) addSMBService(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
 		return
 	}
-	normalized, err := normalizeSMBPayload(&req)
+	normalized, err := normalizeSMBMappingPayload(&req)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -119,26 +116,28 @@ func (s *Server) addSMBService(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	id, err := s.store.AddSMBMapping(normalized)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": mapSMBStoreError(err)})
-		return
-	}
 	if normalized.Enabled {
 		if err := smb.CreateOrUpdateShare(normalized.ShareName, normalized.LocalPath, normalized.ReadOnly, normalized.GrantAccount); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 	}
+	id, err := s.store.AddSMBMapping(normalized)
+	if err != nil {
+		if normalized.Enabled {
+			_ = smb.DeleteShare(normalized.ShareName)
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": mapSMBStoreError(err)})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"ok": true, "id": id})
 }
 
-func (s *Server) updateSMBService(c *gin.Context) {
-	if !isWindowsRuntime() {
-		c.JSON(http.StatusNotImplemented, gin.H{"error": "smb is only supported on windows"})
+func (s *Server) updateSMBMapping(c *gin.Context) {
+	if !s.guardSMBWindows(c) {
 		return
 	}
-	item, ok := s.getSMBByParamID(c)
+	item, ok := s.getSMBMappingByParamID(c)
 	if !ok {
 		return
 	}
@@ -148,7 +147,7 @@ func (s *Server) updateSMBService(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
 		return
 	}
-	normalized, err := normalizeSMBPayload(&req)
+	normalized, err := normalizeSMBMappingPayload(&req)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -157,48 +156,53 @@ func (s *Server) updateSMBService(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
-	if err := s.store.UpdateSMBMapping(item.ID, normalized); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": mapSMBStoreError(err)})
-		return
-	}
-	if item.ShareName != normalized.ShareName {
-		_ = smb.DeleteShare(item.ShareName)
-	}
 	if normalized.Enabled {
 		if err := smb.CreateOrUpdateShare(normalized.ShareName, normalized.LocalPath, normalized.ReadOnly, normalized.GrantAccount); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+		if item.ShareName != normalized.ShareName {
+			_ = smb.DeleteShare(item.ShareName)
+		}
 	} else {
 		_ = smb.DeleteShare(normalized.ShareName)
+		if item.ShareName != normalized.ShareName {
+			_ = smb.DeleteShare(item.ShareName)
+		}
+	}
+	if err := s.store.UpdateSMBMapping(item.ID, normalized); err != nil {
+		_ = s.restoreSMBShareState(item)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": mapSMBStoreError(err)})
+		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-func (s *Server) deleteSMBService(c *gin.Context) {
-	if !isWindowsRuntime() {
-		c.JSON(http.StatusNotImplemented, gin.H{"error": "smb is only supported on windows"})
+func (s *Server) deleteSMBMapping(c *gin.Context) {
+	if !s.guardSMBWindows(c) {
 		return
 	}
-	item, ok := s.getSMBByParamID(c)
+	item, ok := s.getSMBMappingByParamID(c)
 	if !ok {
 		return
 	}
-	if err := s.store.DeleteSMBMapping(item.ID); err != nil {
+	if err := smb.DeleteShare(item.ShareName); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	_ = smb.DeleteShare(item.ShareName)
+	if err := s.store.DeleteSMBMapping(item.ID); err != nil {
+		_ = s.restoreSMBShareState(item)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-func (s *Server) startSMBService(c *gin.Context) {
-	if !isWindowsRuntime() {
-		c.JSON(http.StatusNotImplemented, gin.H{"error": "smb is only supported on windows"})
+func (s *Server) startSMBMapping(c *gin.Context) {
+	if !s.guardSMBWindows(c) {
 		return
 	}
-	item, ok := s.getSMBByParamID(c)
+	item, ok := s.getSMBMappingByParamID(c)
 	if !ok {
 		return
 	}
@@ -214,12 +218,11 @@ func (s *Server) startSMBService(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-func (s *Server) stopSMBService(c *gin.Context) {
-	if !isWindowsRuntime() {
-		c.JSON(http.StatusNotImplemented, gin.H{"error": "smb is only supported on windows"})
+func (s *Server) stopSMBMapping(c *gin.Context) {
+	if !s.guardSMBWindows(c) {
 		return
 	}
-	item, ok := s.getSMBByParamID(c)
+	item, ok := s.getSMBMappingByParamID(c)
 	if !ok {
 		return
 	}
@@ -235,12 +238,11 @@ func (s *Server) stopSMBService(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-func (s *Server) restartSMBService(c *gin.Context) {
-	if !isWindowsRuntime() {
-		c.JSON(http.StatusNotImplemented, gin.H{"error": "smb is only supported on windows"})
+func (s *Server) restartSMBMapping(c *gin.Context) {
+	if !s.guardSMBWindows(c) {
 		return
 	}
-	item, ok := s.getSMBByParamID(c)
+	item, ok := s.getSMBMappingByParamID(c)
 	if !ok {
 		return
 	}
@@ -256,12 +258,11 @@ func (s *Server) restartSMBService(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-func (s *Server) healthSMBService(c *gin.Context) {
-	if !isWindowsRuntime() {
-		c.JSON(http.StatusNotImplemented, gin.H{"error": "smb is only supported on windows"})
+func (s *Server) healthSMBMapping(c *gin.Context) {
+	if !s.guardSMBWindows(c) {
 		return
 	}
-	item, ok := s.getSMBByParamID(c)
+	item, ok := s.getSMBMappingByParamID(c)
 	if !ok {
 		return
 	}
@@ -272,10 +273,9 @@ func (s *Server) healthSMBService(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true, "message": "share available"})
 }
 
-func (s *Server) getSMBByParamID(c *gin.Context) (*store.SMBMapping, bool) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil || id <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+func (s *Server) getSMBMappingByParamID(c *gin.Context) (*store.SMBMapping, bool) {
+	id, ok := parsePositiveInt64Param(c, "id")
+	if !ok {
 		return nil, false
 	}
 	item, err := s.store.GetSMBMapping(id)
@@ -290,7 +290,7 @@ func (s *Server) getSMBByParamID(c *gin.Context) (*store.SMBMapping, bool) {
 	return item, true
 }
 
-func normalizeSMBPayload(req *store.SMBMapping) (*store.SMBMapping, error) {
+func normalizeSMBMappingPayload(req *store.SMBMapping) (*store.SMBMapping, error) {
 	name := strings.TrimSpace(req.Name)
 	localPath := filepath.Clean(strings.TrimSpace(req.LocalPath))
 	shareName := strings.TrimSpace(req.ShareName)
@@ -324,6 +324,24 @@ func isWindowsRuntime() bool {
 	return runtime.GOOS == "windows"
 }
 
+func (s *Server) guardSMBWindows(c *gin.Context) bool {
+	if isWindowsRuntime() {
+		return true
+	}
+	c.JSON(http.StatusNotImplemented, gin.H{"error": "smb is only supported on windows"})
+	return false
+}
+
+func (s *Server) restoreSMBShareState(item *store.SMBMapping) error {
+	if item == nil {
+		return nil
+	}
+	if !item.Enabled {
+		return smb.DeleteShare(item.ShareName)
+	}
+	return smb.CreateOrUpdateShare(item.ShareName, item.LocalPath, item.ReadOnly, item.GrantAccount)
+}
+
 func (s *Server) ensureSMBShareNameAvailable(shareName string, selfID int64) error {
 	item, err := s.store.GetSMBMappingByShareName(shareName)
 	if err == nil && item != nil && item.ID != selfID {
@@ -336,14 +354,14 @@ func (s *Server) ensureSMBShareNameAvailable(shareName string, selfID int64) err
 }
 
 func mapSMBStoreError(err error) string {
-	msg := err.Error()
-	if strings.Contains(msg, "UNIQUE constraint failed: smb_mappings.share_name") {
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "unique constraint failed") && strings.Contains(msg, "smb_mappings.share_name") {
 		return "share_name already exists"
 	}
-	if strings.Contains(msg, "UNIQUE constraint failed: smb_mappings.name") {
+	if strings.Contains(msg, "unique constraint failed") && strings.Contains(msg, "smb_mappings.name") {
 		return "name already exists"
 	}
-	return msg
+	return err.Error()
 }
 
 func shouldSkipSystemShare(shareName string) bool {

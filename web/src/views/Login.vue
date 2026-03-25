@@ -54,6 +54,8 @@ import { useRouter } from 'vue-router'
 import { NCard, NForm, NFormItem, NInput, NButton, NSpace } from 'naive-ui'
 import api from '../api/client'
 import { notifySuccess } from '../ui/notify'
+import { STORAGE_KEYS } from '../constants/storage'
+import { ROUTE_PATHS } from '../constants/routes'
 
 const router = useRouter()
 const loading = ref(false)
@@ -64,9 +66,9 @@ async function onLogin() {
   loading.value = true
   try {
     await api.post('/auth/login', { password: form.password })
-    localStorage.setItem('skylink_token', form.password.trim())
+    localStorage.setItem(STORAGE_KEYS.skylinkToken, form.password.trim())
     notifySuccess('登录成功', '欢迎回来')
-    await router.replace('/dashboard')
+    await router.replace(ROUTE_PATHS.dashboard)
   } finally {
     loading.value = false
   }

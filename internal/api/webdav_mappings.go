@@ -10,7 +10,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -18,7 +17,7 @@ import (
 	"golang.org/x/net/webdav"
 )
 
-func (s *Server) listWebDevServices(c *gin.Context) {
+func (s *Server) listWebDavMappings(c *gin.Context) {
 	list, err := s.store.ListWebDAVMappings()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -27,13 +26,13 @@ func (s *Server) listWebDevServices(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"list": list})
 }
 
-func (s *Server) addWebDevService(c *gin.Context) {
+func (s *Server) addWebDavMapping(c *gin.Context) {
 	var req store.WebDAVMapping
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
 		return
 	}
-	normalized, err := normalizeWebDevServicePayload(&req)
+	normalized, err := normalizeWebDavMappingPayload(&req)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -46,10 +45,9 @@ func (s *Server) addWebDevService(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true, "id": id})
 }
 
-func (s *Server) updateWebDevService(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil || id <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+func (s *Server) updateWebDavMapping(c *gin.Context) {
+	id, ok := parsePositiveInt64Param(c, "id")
+	if !ok {
 		return
 	}
 	var req store.WebDAVMapping
@@ -57,7 +55,7 @@ func (s *Server) updateWebDevService(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
 		return
 	}
-	normalized, err := normalizeWebDevServicePayload(&req)
+	normalized, err := normalizeWebDavMappingPayload(&req)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -69,10 +67,9 @@ func (s *Server) updateWebDevService(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-func (s *Server) deleteWebDevService(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil || id <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+func (s *Server) deleteWebDavMapping(c *gin.Context) {
+	id, ok := parsePositiveInt64Param(c, "id")
+	if !ok {
 		return
 	}
 	if err := s.store.DeleteWebDAVMapping(id); err != nil {
@@ -82,8 +79,8 @@ func (s *Server) deleteWebDevService(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-func (s *Server) startWebDevService(c *gin.Context) {
-	item, ok := s.getWebDAVByParamID(c)
+func (s *Server) startWebDavMapping(c *gin.Context) {
+	item, ok := s.getWebDavMappingByParamID(c)
 	if !ok {
 		return
 	}
@@ -95,8 +92,8 @@ func (s *Server) startWebDevService(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-func (s *Server) stopWebDevService(c *gin.Context) {
-	item, ok := s.getWebDAVByParamID(c)
+func (s *Server) stopWebDavMapping(c *gin.Context) {
+	item, ok := s.getWebDavMappingByParamID(c)
 	if !ok {
 		return
 	}
@@ -108,8 +105,8 @@ func (s *Server) stopWebDevService(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-func (s *Server) restartWebDevService(c *gin.Context) {
-	item, ok := s.getWebDAVByParamID(c)
+func (s *Server) restartWebDavMapping(c *gin.Context) {
+	item, ok := s.getWebDavMappingByParamID(c)
 	if !ok {
 		return
 	}
@@ -121,8 +118,8 @@ func (s *Server) restartWebDevService(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-func (s *Server) healthWebDevService(c *gin.Context) {
-	item, ok := s.getWebDAVByParamID(c)
+func (s *Server) healthWebDavMapping(c *gin.Context) {
+	item, ok := s.getWebDavMappingByParamID(c)
 	if !ok {
 		return
 	}
@@ -134,7 +131,7 @@ func (s *Server) healthWebDevService(c *gin.Context) {
 }
 
 func (s *Server) serveWebDAVByID(c *gin.Context) {
-	item, ok := s.getWebDAVByParamID(c)
+	item, ok := s.getWebDavMappingByParamID(c)
 	if !ok {
 		return
 	}
@@ -178,10 +175,9 @@ func (s *Server) serveWebDAVByID(c *gin.Context) {
 	handler.ServeHTTP(c.Writer, c.Request)
 }
 
-func (s *Server) getWebDAVByParamID(c *gin.Context) (*store.WebDAVMapping, bool) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil || id <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+func (s *Server) getWebDavMappingByParamID(c *gin.Context) (*store.WebDAVMapping, bool) {
+	id, ok := parsePositiveInt64Param(c, "id")
+	if !ok {
 		return nil, false
 	}
 	svc, err := s.store.GetWebDAVMapping(id)
@@ -196,7 +192,7 @@ func (s *Server) getWebDAVByParamID(c *gin.Context) (*store.WebDAVMapping, bool)
 	return svc, true
 }
 
-func normalizeWebDevServicePayload(req *store.WebDAVMapping) (*store.WebDAVMapping, error) {
+func normalizeWebDavMappingPayload(req *store.WebDAVMapping) (*store.WebDAVMapping, error) {
 	name := strings.TrimSpace(req.Name)
 	localPath := strings.TrimSpace(req.LocalPath)
 	username := strings.TrimSpace(req.Username)

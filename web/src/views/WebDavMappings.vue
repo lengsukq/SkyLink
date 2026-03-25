@@ -8,14 +8,14 @@
       <template #actions>
         <n-space :size="8">
           <n-button type="primary" size="small" @click="openCreate">添加映射</n-button>
-          <n-button size="small" @click="loadServices">刷新</n-button>
+          <n-button size="small" @click="loadMappings">刷新</n-button>
         </n-space>
       </template>
     </page-header>
 
     <n-space v-else :size="8" justify="end" class="page-section">
       <n-button type="primary" size="small" @click="openCreate">添加映射</n-button>
-      <n-button size="small" @click="loadServices">刷新</n-button>
+      <n-button size="small" @click="loadMappings">刷新</n-button>
     </n-space>
 
     <n-alert type="warning" class="page-section">
@@ -46,7 +46,7 @@
           <n-space vertical :size="6" style="width: 100%">
             <n-space :size="8">
               <n-input v-model:value="form.local_path" placeholder="例如：C:\\Users\\hey\\Documents" />
-              <n-button size="small" @click="openDirectoryPicker">选择文件夹</n-button>
+              <n-button size="small" @click="openDirectoryPicker(directoryInputRef)">选择文件夹</n-button>
             </n-space>
             <span style="font-size: 12px; color: #666">
               浏览器模式通常无法直接读取绝对路径；若未自动填充完整路径，请手动输入。
@@ -69,10 +69,10 @@
           <n-input v-model:value="form.password" type="password" show-password-on="click" placeholder="WebDAV 密码" />
         </n-form-item>
         <n-form-item label="启用">
-          <n-select v-model:value="form.enabled" :options="enabledOptions" />
+          <n-select v-model:value="form.enabled" :options="ENABLED_OPTIONS" />
         </n-form-item>
         <n-form-item label="写入模式">
-          <n-select v-model:value="form.read_only" :options="readOnlyOptions" />
+          <n-select v-model:value="form.read_only" :options="READ_ONLY_OPTIONS" />
         </n-form-item>
       </n-form>
     </n-modal>
@@ -99,6 +99,10 @@ import {
 import api from '../api/client'
 import PageHeader from '../components/PageHeader.vue'
 import { notifyError, notifySuccess } from '../ui/notify'
+import { useDirectoryPicker } from '../composables/useDirectoryPicker'
+import { DEFAULT_WEB_DAV_DEV_PORT } from '../constants/network'
+import { ENABLED_OPTIONS, READ_ONLY_OPTIONS } from '../constants/formOptions'
+import { copyToClipboard } from '../utils/clipboard'
 
 defineProps({
   embedded: { type: Boolean, default: false },
@@ -110,15 +114,12 @@ const showEditor = ref(false)
 const editingId = ref(null)
 const form = ref(newForm())
 const directoryInputRef = ref(null)
-
-const enabledOptions = [
-  { label: '启用', value: true },
-  { label: '停用', value: false },
-]
-const readOnlyOptions = [
-  { label: '读写', value: false },
-  { label: '只读', value: true },
-]
+const requestOptions = { silentError: true }
+const { openDirectoryPicker, onDirectoryPicked } = useDirectoryPicker((resolvedPath, options = {}) => {
+  if (!options.partial || !form.value.local_path.trim()) {
+    form.value.local_path = resolvedPath
+  }
+})
 
 const webDavBaseOrigin = resolveWebDavBaseOrigin()
 
@@ -187,7 +188,7 @@ const columns = computed(() => [
 
 function resolveWebDavBaseOrigin() {
   if (import.meta.env.DEV) {
-    return `${window.location.protocol}//${window.location.hostname}:19080`
+    return `${window.location.protocol}//${window.location.hostname}:${DEFAULT_WEB_DAV_DEV_PORT}`
   }
   return window.location.origin
 }
@@ -203,10 +204,10 @@ function newForm() {
   }
 }
 
-async function loadServices() {
+async function loadMappings() {
   loading.value = true
   try {
-    const { data } = await api.get('/webdav/mappings')
+    const { data } = await api.get('/webdav/mappings', requestOptions)
     list.value = data?.list || []
   } catch (e) {
     notifyError('加载失败', e?.response?.data?.error || e?.message || '加载服务列表失败')
@@ -234,50 +235,6 @@ function openEdit(row) {
   showEditor.value = true
 }
 
-function openDirectoryPicker() {
-  const input = directoryInputRef.value
-  if (!input) {
-    notifyError('当前环境不支持', '无法打开目录选择器，请手动填写本地目录路径。')
-    return
-  }
-  input.value = ''
-  input.click()
-}
-
-function onDirectoryPicked(event) {
-  const input = event?.target
-  const files = input?.files
-  if (!files || files.length === 0) return
-
-  const first = files[0]
-  const relativePath = first.webkitRelativePath || ''
-  const firstSegment = relativePath.split('/')[0] || ''
-
-  // Electron/部分桌面容器会暴露 file.path，可推断绝对目录。
-  const absoluteFilePath = typeof first.path === 'string' ? first.path : ''
-  if (absoluteFilePath && relativePath) {
-    const normalizedAbs = absoluteFilePath.replace(/\\/g, '/')
-    const normalizedRel = relativePath.replace(/\\/g, '/')
-    const suffix = `/${normalizedRel}`
-    if (normalizedAbs.endsWith(suffix)) {
-      const base = normalizedAbs.slice(0, normalizedAbs.length - suffix.length)
-      form.value.local_path = base.replace(/\//g, '\\')
-      notifySuccess('已填充目录', `已自动填充：${form.value.local_path}`)
-      return
-    }
-  }
-
-  if (firstSegment) {
-    if (!form.value.local_path.trim()) {
-      form.value.local_path = firstSegment
-    }
-    notifyError('无法获取绝对路径', '当前浏览器受限，已尝试提取目录名，请手动补全本地绝对路径。')
-    return
-  }
-
-  notifyError('选择失败', '未能读取目录信息，请手动填写本地目录路径。')
-}
-
 async function onSave() {
   if (!form.value.name.trim() || !form.value.local_path.trim() || !form.value.username.trim() || !form.value.password.trim()) {
     notifyError('参数错误', '名称、本地目录、用户名、密码是必填项')
@@ -285,12 +242,12 @@ async function onSave() {
   }
   try {
     if (editingId.value) {
-      await api.put(`/webdav/mappings/${editingId.value}`, form.value)
+      await api.put(`/webdav/mappings/${editingId.value}`, form.value, requestOptions)
     } else {
-      await api.post('/webdav/mappings', form.value)
+      await api.post('/webdav/mappings', form.value, requestOptions)
     }
     notifySuccess('已保存', 'WebDAV 映射配置已更新')
-    await loadServices()
+    await loadMappings()
     return true
   } catch (e) {
     notifyError('保存失败', e?.response?.data?.error || e?.message || '保存失败')
@@ -300,7 +257,7 @@ async function onSave() {
 
 async function onHealth(row) {
   try {
-    const { data } = await api.get(`/webdav/mappings/${row.id}/health`)
+    const { data } = await api.get(`/webdav/mappings/${row.id}/health`, requestOptions)
     if (data?.ok) notifySuccess('路径检查通过', data?.message || '')
     else notifyError('路径检查失败', data?.message || '目录不可用')
   } catch (e) {
@@ -310,9 +267,9 @@ async function onHealth(row) {
 
 async function onDelete(id) {
   try {
-    await api.delete(`/webdav/mappings/${id}`)
+    await api.delete(`/webdav/mappings/${id}`, requestOptions)
     notifySuccess('已删除', '服务配置已删除')
-    await loadServices()
+    await loadMappings()
   } catch (e) {
     notifyError('删除失败', e?.response?.data?.error || e?.message || '删除失败')
   }
@@ -321,9 +278,9 @@ async function onDelete(id) {
 async function onToggleEnabled(row, enabled) {
   try {
     const endpoint = enabled ? 'start' : 'stop'
-    await api.post(`/webdav/mappings/${row.id}/${endpoint}`)
+    await api.post(`/webdav/mappings/${row.id}/${endpoint}`, {}, requestOptions)
     notifySuccess(enabled ? '已启用' : '已停用', '')
-    await loadServices()
+    await loadMappings()
   } catch (e) {
     notifyError('操作失败', e?.response?.data?.error || e?.message || '操作失败')
   }
@@ -331,7 +288,7 @@ async function onToggleEnabled(row, enabled) {
 
 async function copyText(value) {
   try {
-    await navigator.clipboard.writeText(value)
+    await copyToClipboard(value)
     notifySuccess('已复制', value)
   } catch (_) {
     notifyError('复制失败', '请手动复制链接')
@@ -339,6 +296,6 @@ async function copyText(value) {
 }
 
 onMounted(async () => {
-  await loadServices()
+  await loadMappings()
 })
 </script>

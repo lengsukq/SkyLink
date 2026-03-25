@@ -1,6 +1,9 @@
 <template>
   <div>
     <n-h1>仪表盘</n-h1>
+    <n-alert v-if="loadError" type="warning" class="page-section">
+      {{ loadError }}
+    </n-alert>
     <n-grid cols="1 s:1 m:2 l:3 xl:4" x-gap="16" y-gap="16" class="page-section">
       <n-gi>
         <n-card title="映射数量" size="small" class="page-card">
@@ -17,8 +20,8 @@
           <n-space vertical size="small">
             <n-statistic :value="stats.cf_accounts_count" />
             <n-space>
-              <n-button type="primary" tag="a" href="#/cloudflare">管理 CF 账号</n-button>
-              <n-button tag="a" href="#/cloudflare">查看 CF 记录</n-button>
+              <n-button type="primary" tag="a" :href="`#${ROUTE_PATHS.cloudflareCenter}`">管理 CF 账号</n-button>
+              <n-button tag="a" :href="`#${ROUTE_PATHS.cloudflareCenter}`">查看 CF 记录</n-button>
             </n-space>
           </n-space>
         </n-card>
@@ -47,7 +50,7 @@
                 {{ stats.easytier_has_runtime ? '已安装' : '未准备' }}
               </n-tag>
             </n-space>
-            <n-button size="small" type="primary" tag="a" href="#/easytier">
+            <n-button size="small" type="primary" tag="a" :href="`#${ROUTE_PATHS.easyTier}`">
               前往 EasyTier 页面
             </n-button>
           </n-space>
@@ -59,9 +62,10 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { NCard, NGrid, NGi, NStatistic, NSpace, NButton, NH1, NTag } from 'naive-ui'
+import { NCard, NGrid, NGi, NStatistic, NSpace, NButton, NH1, NTag, NAlert } from 'naive-ui'
 import api from '../api/client'
 import StorageVolumesPanel from '../components/StorageVolumesPanel.vue'
+import { ROUTE_PATHS } from '../constants/routes'
 
 const stats = ref({
   mappings_count: 0,
@@ -73,13 +77,15 @@ const stats = ref({
   easytier_has_runtime: false,
   is_windows: false,
 })
+const loadError = ref('')
 
 onMounted(async () => {
   try {
-    const { data } = await api.get('/stats')
+    const { data } = await api.get('/stats', { silentError: true })
     stats.value = data
+    loadError.value = ''
   } catch (_) {
-    // ignore
+    loadError.value = '统计信息加载失败，请稍后重试。'
   }
 })
 </script>

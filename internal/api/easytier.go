@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/skylink/skylink/internal/config"
@@ -98,7 +97,7 @@ func (s *Server) deleteEasyTierProfile(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), easyTierStartTimeout)
 	defer cancel()
 	_ = s.easyTierDaemons.Stop(ctx, profileID)
 	c.JSON(http.StatusOK, gin.H{"message": "profile deleted"})
@@ -283,7 +282,7 @@ func (s *Server) startEasyTierDaemon(c *gin.Context, profileID string, cfg store
 			return
 		}
 	}
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), easyTierStartTimeout)
 	defer cancel()
 	if err := s.easyTierDaemons.Start(ctx, profileID, easytier.DaemonConfig{
 		BinaryPath: daemonPath,
@@ -315,7 +314,7 @@ func (s *Server) stopEasyTierDaemon(c *gin.Context, profileID string) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "EasyTier daemon mode is not enabled"})
 		return
 	}
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), easyTierStartTimeout)
 	defer cancel()
 	if err := s.easyTierDaemons.Stop(ctx, profileID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -363,7 +362,7 @@ func (s *Server) restartEasyTierDaemonAPI(c *gin.Context, profileID string, cfg 
 			return
 		}
 	}
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), easyTierRestartTimeout)
 	defer cancel()
 	imageTag := cfg.ImageTag
 	if body := getDaemonStartBody(c); body.ImageTag != "" {
@@ -472,22 +471,32 @@ func (s *Server) postEasyTierDaemonReleasePortByProfile(c *gin.Context) {
 }
 
 func (s *Server) releaseEasyTierPorts(c *gin.Context, cfg store.EasyTierConfig) {
-	ports := make([]int, 0, len(easytier.DefaultEasyTierPorts)+1)
-	portSet := make(map[int]bool)
-	for _, p := range easytier.DefaultEasyTierPorts {
-		if !portSet[p] {
-			portSet[p] = true
-			ports = append(ports, p)
-		}
+	ports, err := buildEasyTierReleasePortList(cfg)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
-	if q := easytier.ParsePortFromAddress(c.Query("port")); q != 0 && !portSet[q] {
-		ports = append(ports, q)
-	}
-	if cfg.RPCPortal != "" {
-		if rpcPort := easytier.ParsePortFromAddress(cfg.RPCPortal); rpcPort != 0 && !portSet[rpcPort] {
-			portSet[rpcPort] = true
-			ports = append(ports, rpcPort)
+	if q := strings.TrimSpace(c.Query("port")); q != "" {
+		requestedPort := easytier.ParsePortFromAddress(q)
+		if requestedPort == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid port query parameter"})
+			return
 		}
+		allowed := false
+		for _, p := range ports {
+			if p == requestedPort {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":         "port is not in allowed EasyTier release list",
+				"allowed_ports": ports,
+			})
+			return
+		}
+		ports = []int{requestedPort}
 	}
 	killed, portsFreed, err := easytier.KillProcessOnPorts(ports)
 	if err != nil {
@@ -505,7 +514,7 @@ func (s *Server) restartEasyTierDaemon(profileID, envPath, imageTag string) {
 	if s.easyTierDaemons == nil || s.easyTierCfg == nil || !s.easyTierCfg.DaemonEnabled {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), easyTierRestartTimeout)
 	defer cancel()
 	daemonPath := s.resolveDaemonPath(ctx, imageTag)
 	_ = s.easyTierDaemons.Restart(ctx, profileID, easytier.DaemonConfig{
@@ -802,7 +811,7 @@ func (s *Server) postEasyTierRuntimeInstall(c *gin.Context) {
 		platform = easytier.Platform{OS: strings.TrimSpace(body.OS), Arch: strings.TrimSpace(body.Arch)}
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), easyTierInstallTimeout)
 	defer cancel()
 
 	path, err := s.easyTierRuntime.EnsureDaemon(ctx, version, platform)

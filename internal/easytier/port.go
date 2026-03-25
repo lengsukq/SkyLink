@@ -38,11 +38,16 @@ func PIDsOnPort(port int) ([]int, error) {
 // KillProcessOnPorts 结束占用给定端口列表的进程；同一 PID 只结束一次。返回被结束的进程数和涉及端口。
 func KillProcessOnPorts(ports []int) (totalKilled int, portsFreed []int, err error) {
 	seenPID := make(map[int]bool)
+	var queryErrors []string
 	for _, port := range ports {
 		if port <= 0 || port > 65535 {
 			continue
 		}
-		pids, _ := platformPIDsOnPort(port)
+		pids, queryErr := platformPIDsOnPort(port)
+		if queryErr != nil {
+			queryErrors = append(queryErrors, fmt.Sprintf("port %d: %v", port, queryErr))
+			continue
+		}
 		if len(pids) == 0 {
 			continue
 		}
@@ -57,7 +62,10 @@ func KillProcessOnPorts(ports []int) (totalKilled int, portsFreed []int, err err
 			}
 		}
 	}
-	return totalKilled, portsFreed, nil
+	if len(queryErrors) > 0 {
+		err = fmt.Errorf("query pid by port failed: %s", strings.Join(queryErrors, "; "))
+	}
+	return totalKilled, portsFreed, err
 }
 
 // ParsePortFromAddress 从 "host:port" 或 ":port" 或 "port" 中解析出端口号，无法解析时返回 0。

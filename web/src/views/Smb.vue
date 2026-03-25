@@ -8,7 +8,7 @@
         <n-space :size="8">
           <n-button type="primary" size="small" @click="openCreate">添加映射</n-button>
           <n-button size="small" :loading="syncingLocal" @click="syncLocalMappings">同步本地 SMB 映射</n-button>
-          <n-button size="small" @click="loadServices">刷新</n-button>
+          <n-button size="small" @click="loadMappings">刷新</n-button>
         </n-space>
       </template>
     </page-header>
@@ -41,7 +41,7 @@
           <n-space vertical :size="6" style="width: 100%">
             <n-space :size="8">
               <n-input v-model:value="form.local_path" placeholder="例如：C:\\Users\\hey\\Documents" />
-              <n-button size="small" @click="openDirectoryPicker">选择文件夹</n-button>
+              <n-button size="small" @click="openDirectoryPicker(directoryInputRef)">选择文件夹</n-button>
             </n-space>
             <span style="font-size: 12px; color: #666">
               浏览器模式通常无法直接读取绝对路径；若未自动填充完整路径，请手动输入。
@@ -58,10 +58,10 @@
           </n-space>
         </n-form-item>
         <n-form-item label="启用">
-          <n-select v-model:value="form.enabled" :options="enabledOptions" />
+          <n-select v-model:value="form.enabled" :options="ENABLED_OPTIONS" />
         </n-form-item>
         <n-form-item label="写入模式">
-          <n-select v-model:value="form.read_only" :options="readOnlyOptions" />
+          <n-select v-model:value="form.read_only" :options="READ_ONLY_OPTIONS" />
         </n-form-item>
         <n-form-item label="SMB 授权账户">
           <n-input
@@ -94,6 +94,9 @@ import {
 import api from '../api/client'
 import PageHeader from '../components/PageHeader.vue'
 import { notifyError, notifySuccess } from '../ui/notify'
+import { useDirectoryPicker } from '../composables/useDirectoryPicker'
+import { ENABLED_OPTIONS, READ_ONLY_OPTIONS } from '../constants/formOptions'
+import { copyToClipboard } from '../utils/clipboard'
 
 const loading = ref(false)
 const list = ref([])
@@ -102,15 +105,12 @@ const editingId = ref(null)
 const form = ref(newForm())
 const directoryInputRef = ref(null)
 const syncingLocal = ref(false)
-
-const enabledOptions = [
-  { label: '启用', value: true },
-  { label: '停用', value: false },
-]
-const readOnlyOptions = [
-  { label: '读写', value: false },
-  { label: '只读', value: true },
-]
+const requestOptions = { silentError: true }
+const { openDirectoryPicker, onDirectoryPicked } = useDirectoryPicker((resolvedPath, options = {}) => {
+  if (!options.partial || !form.value.local_path.trim()) {
+    form.value.local_path = resolvedPath
+  }
+})
 
 const columns = computed(() => [
   { title: '名称', key: 'name', width: 140 },
@@ -192,10 +192,10 @@ function newForm() {
   }
 }
 
-async function loadServices() {
+async function loadMappings() {
   loading.value = true
   try {
-    const { data } = await api.get('/smb/mappings')
+    const { data } = await api.get('/smb/mappings', requestOptions)
     list.value = data?.list || []
   } catch (e) {
     notifyError('加载失败', e?.response?.data?.error || e?.message || '加载 SMB 列表失败')
@@ -223,49 +223,6 @@ function openEdit(row) {
   showEditor.value = true
 }
 
-function openDirectoryPicker() {
-  const input = directoryInputRef.value
-  if (!input) {
-    notifyError('当前环境不支持', '无法打开目录选择器，请手动填写本地目录路径。')
-    return
-  }
-  input.value = ''
-  input.click()
-}
-
-function onDirectoryPicked(event) {
-  const input = event?.target
-  const files = input?.files
-  if (!files || files.length === 0) return
-
-  const first = files[0]
-  const relativePath = first.webkitRelativePath || ''
-  const firstSegment = relativePath.split('/')[0] || ''
-
-  const absoluteFilePath = typeof first.path === 'string' ? first.path : ''
-  if (absoluteFilePath && relativePath) {
-    const normalizedAbs = absoluteFilePath.replace(/\\/g, '/')
-    const normalizedRel = relativePath.replace(/\\/g, '/')
-    const suffix = `/${normalizedRel}`
-    if (normalizedAbs.endsWith(suffix)) {
-      const base = normalizedAbs.slice(0, normalizedAbs.length - suffix.length)
-      form.value.local_path = base.replace(/\//g, '\\')
-      notifySuccess('已填充目录', `已自动填充：${form.value.local_path}`)
-      return
-    }
-  }
-
-  if (firstSegment) {
-    if (!form.value.local_path.trim()) {
-      form.value.local_path = firstSegment
-    }
-    notifyError('无法获取绝对路径', '当前浏览器受限，已尝试提取目录名，请手动补全本地绝对路径。')
-    return
-  }
-
-  notifyError('选择失败', '未能读取目录信息，请手动填写本地目录路径。')
-}
-
 async function onSave() {
   if (!form.value.name.trim() || !form.value.share_name.trim() || !form.value.local_path.trim()) {
     notifyError('参数错误', '名称、共享名、本地目录是必填项')
@@ -273,12 +230,12 @@ async function onSave() {
   }
   try {
     if (editingId.value) {
-      await api.put(`/smb/mappings/${editingId.value}`, form.value)
+      await api.put(`/smb/mappings/${editingId.value}`, form.value, requestOptions)
     } else {
-      await api.post('/smb/mappings', form.value)
+      await api.post('/smb/mappings', form.value, requestOptions)
     }
     notifySuccess('已保存', 'SMB 映射配置已更新')
-    await loadServices()
+    await loadMappings()
     return true
   } catch (e) {
     notifyError('保存失败', e?.response?.data?.error || e?.message || '保存失败')
@@ -288,7 +245,7 @@ async function onSave() {
 
 async function onHealth(row) {
   try {
-    const { data } = await api.get(`/smb/mappings/${row.id}/health`)
+    const { data } = await api.get(`/smb/mappings/${row.id}/health`, requestOptions)
     if (data?.ok) notifySuccess('共享检查通过', data?.message || '')
     else notifyError('共享检查失败', data?.message || '共享不可用')
   } catch (e) {
@@ -298,9 +255,9 @@ async function onHealth(row) {
 
 async function onDelete(id) {
   try {
-    await api.delete(`/smb/mappings/${id}`)
+    await api.delete(`/smb/mappings/${id}`, requestOptions)
     notifySuccess('已删除', 'SMB 映射已删除')
-    await loadServices()
+    await loadMappings()
   } catch (e) {
     notifyError('删除失败', e?.response?.data?.error || e?.message || '删除失败')
   }
@@ -309,9 +266,9 @@ async function onDelete(id) {
 async function onToggleEnabled(row, enabled) {
   try {
     const endpoint = enabled ? 'start' : 'stop'
-    await api.post(`/smb/mappings/${row.id}/${endpoint}`)
+    await api.post(`/smb/mappings/${row.id}/${endpoint}`, {}, requestOptions)
     notifySuccess(enabled ? '已启用' : '已停用', '')
-    await loadServices()
+    await loadMappings()
   } catch (e) {
     notifyError('操作失败', e?.response?.data?.error || e?.message || '操作失败')
   }
@@ -320,7 +277,7 @@ async function onToggleEnabled(row, enabled) {
 async function syncLocalMappings() {
   syncingLocal.value = true
   try {
-    const { data } = await api.post('/smb/mappings/sync-local')
+    const { data } = await api.post('/smb/mappings/sync-local', {}, requestOptions)
     const added = Number(data?.added || 0)
     const updated = Number(data?.updated || 0)
     const skipped = Number(data?.skipped || 0)
@@ -330,7 +287,7 @@ async function syncLocalMappings() {
     } else {
       notifySuccess('同步完成', `新增 ${added}，更新 ${updated}，跳过 ${skipped}`)
     }
-    await loadServices()
+    await loadMappings()
   } catch (e) {
     notifyError('同步失败', e?.response?.data?.error || e?.message || '同步本地 SMB 映射失败')
   } finally {
@@ -340,7 +297,7 @@ async function syncLocalMappings() {
 
 async function copyText(value) {
   try {
-    await navigator.clipboard.writeText(value)
+    await copyToClipboard(value)
     notifySuccess('已复制', value)
   } catch (_) {
     notifyError('复制失败', '请手动复制路径')
@@ -348,6 +305,6 @@ async function copyText(value) {
 }
 
 onMounted(async () => {
-  await loadServices()
+  await loadMappings()
 })
 </script>

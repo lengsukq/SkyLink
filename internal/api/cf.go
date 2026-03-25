@@ -2,7 +2,6 @@ package api
 
 import (
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -184,9 +183,8 @@ func (s *Server) createCFAccount(c *gin.Context) {
 }
 
 func (s *Server) updateCFAccount(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil || id <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+	id, ok := parsePositiveInt64Param(c, "id")
+	if !ok {
 		return
 	}
 	var req struct {
@@ -255,9 +253,8 @@ func (s *Server) updateCFAccount(c *gin.Context) {
 }
 
 func (s *Server) deleteCFAccount(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil || id <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+	id, ok := parsePositiveInt64Param(c, "id")
+	if !ok {
 		return
 	}
 	// 简单实现：直接删除；如需更严格约束可检查是否被引用
@@ -272,17 +269,11 @@ func (s *Server) deleteCFAccount(c *gin.Context) {
 }
 
 func (s *Server) activateCFAccount(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil || id <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+	id, ok := parsePositiveInt64Param(c, "id")
+	if !ok {
 		return
 	}
-	acc, err := s.store.GetCFAccount(id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	if acc == nil || strings.TrimSpace(acc.APIToken) == "" {
+	if _, err := s.cfAccountService.GetActivatableAccount(id); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "account not found or token empty"})
 		return
 	}

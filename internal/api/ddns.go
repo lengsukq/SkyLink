@@ -3,8 +3,6 @@ package api
 import (
 	"context"
 	"net/http"
-	"strconv"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/skylink/skylink/internal/ddns"
@@ -70,9 +68,8 @@ func (s *Server) addDDNS(c *gin.Context) {
 }
 
 func (s *Server) updateDDNS(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+	id, ok := parsePositiveInt64Param(c, "id")
+	if !ok {
 		return
 	}
 	var req struct {
@@ -92,9 +89,8 @@ func (s *Server) updateDDNS(c *gin.Context) {
 }
 
 func (s *Server) deleteDDNS(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+	id, ok := parsePositiveInt64Param(c, "id")
+	if !ok {
 		return
 	}
 	if err := s.store.DeleteDDNSConfig(id); err != nil {
@@ -105,7 +101,7 @@ func (s *Server) deleteDDNS(c *gin.Context) {
 }
 
 func (s *Server) getPublicIP(c *gin.Context) {
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), ddnsPublicIPTimeout)
 	defer cancel()
 	ipv4, err4 := ddns.GetPublicIPv4(ctx)
 	ipv6, _ := ddns.GetPublicIPv6(ctx)
