@@ -1,8 +1,8 @@
 <template>
-  <div class="empty-state">
+  <div class="py-8">
     <n-empty :description="title">
       <template #extra>
-        <p v-if="description" class="empty-state__description">
+        <p v-if="description" class="mb-2 text-[13px] text-slate-500">
           {{ description }}
         </p>
         <n-button
@@ -42,16 +42,3 @@ function onPrimary() {
   emit('primary')
 }
 </script>
-
-<style scoped>
-.empty-state {
-  padding: 24px 0;
-}
-
-.empty-state__description {
-  margin: 0 0 8px;
-  font-size: 13px;
-  color: #666;
-}
-</style>
-

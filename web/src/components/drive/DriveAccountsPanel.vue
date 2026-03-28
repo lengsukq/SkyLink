@@ -1,8 +1,10 @@
 <template>
   <div>
-    <div class="toolbar">
+    <div
+      class="toolbar mb-4 rounded-2xl border border-white/45 bg-white/50 px-3 py-2.5 shadow-sm shadow-slate-900/5 backdrop-blur-md"
+    >
       <n-space justify="space-between" align="center">
-        <div class="title">子账号</div>
+        <div class="title text-sm font-semibold tracking-tight text-slate-800">子账号</div>
         <n-space>
           <n-button secondary @click="refresh" :loading="loading">刷新</n-button>
           <n-button type="primary" @click="openCreate">创建</n-button>
@@ -454,13 +456,6 @@ async function copyIssuedPassword() {
 </script>
 
 <style scoped>
-.toolbar {
-  margin-bottom: 12px;
-}
-.title {
-  font-size: 14px;
-  font-weight: 600;
-}
 .token-alert {
   margin-bottom: 12px;
 }

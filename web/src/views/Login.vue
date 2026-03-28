@@ -1,5 +1,5 @@
 <template>
-  <div class="login-page">
+  <div class="login-page skylink-auth-bg">
     <div class="login-page__content">
       <div class="login-page__brand">
         <h1 class="login-page__brand-title">SKYLINK</h1>
@@ -8,8 +8,8 @@
         </p>
       </div>
       <div class="login-page__card-wrap">
-        <div class="login-page__card">
-          <n-card class="login-page__card-inner" title="SkyLink 控制台登录">
+        <div class="login-page__card skylink-glass-card-shell">
+          <n-card class="login-page__card-inner skylink-glass-card-inner" title="SkyLink 控制台登录">
             <n-form
               :model="form"
               label-placement="left"
@@ -77,44 +77,10 @@ async function onLogin() {
 
 <style>
 .login-page {
-  position: relative;
-  min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 40px 16px;
-  background:
-    radial-gradient(circle at 0% 0%, rgba(191, 219, 254, 0.9), transparent 60%),
-    radial-gradient(circle at 100% 100%, rgba(221, 214, 254, 0.9), transparent 60%),
-    linear-gradient(145deg, #eff6ff 0%, #f9fafb 40%, #ffffff 100%);
-  color: #0f172a;
-  overflow: hidden;
-}
-
-.login-page::before,
-.login-page::after {
-  content: '';
-  position: absolute;
-  border-radius: 999px;
-  filter: blur(40px);
-  opacity: 0.4;
-  pointer-events: none;
-}
-
-.login-page::before {
-  width: 260px;
-  height: 260px;
-  background: radial-gradient(circle, rgba(59, 130, 246, 0.85), transparent 65%);
-  top: -80px;
-  right: -40px;
-}
-
-.login-page::after {
-  width: 320px;
-  height: 320px;
-  background: radial-gradient(circle, rgba(129, 140, 248, 0.75), transparent 65%);
-  bottom: -140px;
-  left: -40px;
 }
 
 .login-page__content {
@@ -152,7 +118,7 @@ async function onLogin() {
 .login-page__brand-subtitle {
   font-size: 16px;
   line-height: 1.7;
-  color: #4b5563;
+  color: #475569;
   max-width: 420px;
 }
 
@@ -165,43 +131,10 @@ async function onLogin() {
 .login-page__card {
   width: 100%;
   max-width: 420px;
-  padding: 1px;
-  border-radius: 24px;
-  background:
-    linear-gradient(
-      135deg,
-      rgba(191, 219, 254, 0.9),
-      rgba(129, 140, 248, 0.9),
-      rgba(251, 251, 251, 1)
-    );
-  box-shadow:
-    0 22px 50px rgba(15, 23, 42, 0.16),
-    0 0 0 1px rgba(148, 163, 184, 0.35);
-}
-
-.login-page__card-inner.n-card {
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.98));
-  border-radius: 22px;
-  border: none;
-  box-shadow: none;
-  color: #0f172a;
-  backdrop-filter: blur(22px);
-  -webkit-backdrop-filter: blur(22px);
-}
-
-.login-page__card-inner .n-card__header {
-  border-bottom: 1px solid rgba(148, 163, 184, 0.3);
-}
-
-.login-page__card-inner .n-card-header__main {
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .login-page__hint {
-  color: #9ca3af;
+  color: #94a3b8;
   font-size: 12px;
   margin-top: 16px;
   line-height: 1.7;
@@ -242,4 +175,3 @@ async function onLogin() {
   }
 }
 </style>
-

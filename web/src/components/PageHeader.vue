@@ -1,17 +1,17 @@
 <template>
-  <div class="page-header">
-    <div class="page-header__main">
-      <div>
-        <div class="page-header__title-row">
-          <n-h1 class="page-header__title">
+  <div class="mb-5">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div class="min-w-0 flex-1">
+        <div class="flex flex-wrap items-baseline gap-2">
+          <n-h1 class="!m-0 text-2xl font-semibold tracking-tight text-slate-900 sm:text-[1.65rem]">
             {{ title }}
           </n-h1>
         </div>
-        <p v-if="description" class="page-header__description">
+        <p v-if="description" class="mt-1.5 text-[13px] leading-relaxed text-slate-500">
           {{ description }}
         </p>
       </div>
-      <div v-if="$slots.actions" class="page-header__actions">
+      <div v-if="$slots.actions" class="flex shrink-0 flex-wrap items-center gap-2">
         <slot name="actions" />
       </div>
     </div>
@@ -32,33 +32,3 @@ defineProps({
   },
 })
 </script>
-
-<style scoped>
-.page-header {
-  margin-bottom: 16px;
-}
-
-.page-header__main {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.page-header__title {
-  margin: 0;
-}
-
-.page-header__description {
-  margin: 4px 0 0;
-  font-size: 13px;
-  color: #666;
-}
-
-.page-header__actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-</style>
-

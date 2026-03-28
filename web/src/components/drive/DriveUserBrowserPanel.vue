@@ -1,10 +1,12 @@
 <template>
   <div class="layout">
-    <div class="sidebar">
+    <div
+      class="sidebar rounded-2xl border border-white/50 bg-white/55 p-2 shadow-sm shadow-slate-900/5 backdrop-blur-xl"
+    >
       <n-menu :value="activeCategory" :options="categoryOptions" @update:value="onCategory" />
     </div>
 
-    <div class="main">
+    <div class="main rounded-2xl border border-white/35 bg-white/45 p-4 shadow-sm shadow-slate-900/5 backdrop-blur-md md:p-5">
       <n-space vertical size="large">
         <div class="toolbar">
           <n-space align="center" wrap>

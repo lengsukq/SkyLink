@@ -3,11 +3,17 @@
     <n-notification-provider>
       <notifier-bridge />
       <n-message-provider>
-        <n-layout class="app-layout">
-          <n-layout-header v-if="!isLoginPage" class="app-header" bordered>
+        <n-layout
+          class="app-layout min-h-screen bg-transparent bg-gradient-to-b from-slate-100 via-sky-50/40 to-slate-100"
+        >
+          <n-layout-header
+            v-if="!isLoginPage"
+            class="app-header sticky top-0 z-40 border-b border-white/40 bg-white/65 shadow-sm shadow-slate-900/5 backdrop-blur-xl supports-[backdrop-filter]:bg-white/55"
+            :bordered="false"
+          >
             <div class="app-header__inner">
               <div class="app-header__left">
-                <span class="app-header__logo-text">SkyLink</span>
+                <span class="app-header__logo-text tracking-tight">SkyLink</span>
                 <n-space align="center" :size="12">
                   <n-button
                     v-for="item in navItems"
@@ -49,7 +55,12 @@
               </div>
             </div>
           </n-layout-header>
-          <n-layout-content :class="['app-content', { 'app-content--login': isLoginPage }]">
+          <n-layout-content
+            :class="[
+              'app-content px-4 pb-10 pt-6 sm:px-6',
+              { 'app-content--login !p-0': isLoginPage },
+            ]"
+          >
             <div class="app-content__inner">
               <router-view />
             </div>
@@ -88,7 +99,37 @@ import { cfAccountsKey, cfCurrentAccountIdKey, refreshCfStateKey, type CfAccount
 
 const themeOverrides = {
   common: {
-    borderRadius: '6px',
+    fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    borderRadius: '16px',
+    borderRadiusSmall: '12px',
+    boxShadow1: '0 1px 2px 0 rgba(15, 23, 42, 0.05)',
+    boxShadow2: '0 8px 24px -6px rgba(15, 23, 42, 0.08)',
+    boxShadow3: '0 20px 48px -12px rgba(15, 23, 42, 0.12)',
+  },
+  Card: {
+    borderRadius: '16px',
+  },
+  Button: {
+    borderRadiusTiny: '10px',
+    borderRadiusSmall: '12px',
+    borderRadiusMedium: '14px',
+    borderRadiusLarge: '16px',
+  },
+  Input: {
+    borderRadius: '14px',
+  },
+  Select: {
+    peers: {
+      InternalSelection: {
+        borderRadius: '14px',
+      },
+    },
+  },
+  DataTable: {
+    borderRadius: '14px',
+  },
+  Dialog: {
+    borderRadius: '18px',
   },
 }
 
@@ -227,7 +268,6 @@ watch(
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 #app {
@@ -239,7 +279,7 @@ body {
 }
 
 .app-header {
-  height: 56px;
+  height: 60px;
   padding: 0 20px;
   display: flex;
   align-items: center;
@@ -247,7 +287,7 @@ body {
 
 .app-header__inner {
   width: 100%;
-  max-width: 1120px;
+  max-width: 1200px;
   margin: 0 auto;
   display: flex;
   align-items: center;
@@ -266,22 +306,15 @@ body {
 }
 
 .app-header__logo-text {
-  font-weight: 600;
-  font-size: 1.1rem;
-}
-
-.app-content {
-  padding: 20px;
+  font-weight: 650;
+  font-size: 1.125rem;
+  color: #0f172a;
 }
 
 .app-content__inner {
   width: 100%;
-  max-width: 1120px;
+  max-width: 1200px;
   margin: 0 auto;
-}
-
-.app-content--login {
-  padding: 0;
 }
 
 .app-content--login .app-content__inner {
