@@ -39,3 +39,30 @@ func (s *Server) driveIndexStatus(c *gin.Context) {
 	status := s.driveIndexer.GetStatus(id)
 	driveOK(c, gin.H{"status": status})
 }
+
+// driveUserIndexRebuild 供网盘 JWT 调用：重建当前账号的索引，使列表与磁盘一致（与管理员 POST /accounts/:id/index/rebuild 行为相同）。
+// 使用较长超时，避免大目录在重建 walk 时被 5s 父 context 提前取消。
+func (s *Server) driveUserIndexRebuild(c *gin.Context) {
+	acc := currentDriveAccount(c)
+	if acc == nil {
+		driveError(c, http.StatusUnauthorized, driveErrUnauthorized, "unauthorized")
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
+	defer cancel()
+	if err := s.driveIndexer.StartRebuild(ctx, s.store, acc); err != nil {
+		driveError(c, http.StatusBadRequest, driveErrInvalidRequest, err.Error())
+		return
+	}
+	driveOK(c, gin.H{})
+}
+
+func (s *Server) driveUserIndexStatus(c *gin.Context) {
+	acc := currentDriveAccount(c)
+	if acc == nil {
+		driveError(c, http.StatusUnauthorized, driveErrUnauthorized, "unauthorized")
+		return
+	}
+	status := s.driveIndexer.GetStatus(acc.ID)
+	driveOK(c, gin.H{"status": status})
+}

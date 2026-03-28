@@ -26,6 +26,8 @@ type driveFileItem struct {
 	Type       drive.FileType `json:"type"`
 }
 
+// driveListFiles 处理 GET /api/drive/files：按路径直接读盘列举（offset/limit）。
+// 与 driveListEntries（索引表 + 懒扫描、cursor）并存；Web 内置网盘 UI 使用后者。
 func (s *Server) driveListFiles(c *gin.Context) {
 	acc := currentDriveAccount(c)
 	if acc == nil {

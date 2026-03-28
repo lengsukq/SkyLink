@@ -22,16 +22,16 @@ import (
 )
 
 func main() {
-	if err := ensureElevatedOnWindows(); err != nil {
-		log.Fatal("elevation:", err)
-	}
-
 	configPath := flag.String("config", "", "path to config yaml")
 	flag.Parse()
 
 	appCfg, _, easyTierCfg, err := config.Load(*configPath)
 	if err != nil {
 		log.Fatal("config:", err)
+	}
+
+	if err := ensureElevatedOnWindows(appCfg.RequireAdmin); err != nil {
+		log.Fatal("elevation:", err)
 	}
 
 	st, err := store.New(appCfg.DBPath)

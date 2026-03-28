@@ -38,24 +38,7 @@
           <n-input v-model:value="form.share_name" placeholder="例如：docs" />
         </n-form-item>
         <n-form-item label="本地目录" required>
-          <n-space vertical :size="6" style="width: 100%">
-            <n-space :size="8">
-              <n-input v-model:value="form.local_path" placeholder="例如：C:\\Users\\hey\\Documents" />
-              <n-button size="small" @click="openDirectoryPicker(directoryInputRef)">选择文件夹</n-button>
-            </n-space>
-            <span style="font-size: 12px; color: #666">
-              浏览器模式通常无法直接读取绝对路径；若未自动填充完整路径，请手动输入。
-            </span>
-            <input
-              ref="directoryInputRef"
-              type="file"
-              webkitdirectory
-              directory
-              multiple
-              style="display: none"
-              @change="onDirectoryPicked"
-            />
-          </n-space>
+          <local-path-input v-model="form.local_path" placeholder="例如：C:\Users\hey\Documents 或 C:/Users/hey/Documents" />
         </n-form-item>
         <n-form-item label="启用">
           <n-select v-model:value="form.enabled" :options="ENABLED_OPTIONS" />
@@ -93,8 +76,8 @@ import {
 } from 'naive-ui'
 import api from '../api/client'
 import PageHeader from '../components/PageHeader.vue'
+import LocalPathInput from '../components/LocalPathInput.vue'
 import { notifyError, notifySuccess } from '../ui/notify'
-import { useDirectoryPicker } from '../composables/useDirectoryPicker'
 import { ENABLED_OPTIONS, READ_ONLY_OPTIONS } from '../constants/formOptions'
 import { copyToClipboard } from '../utils/clipboard'
 
@@ -103,14 +86,8 @@ const list = ref([])
 const showEditor = ref(false)
 const editingId = ref(null)
 const form = ref(newForm())
-const directoryInputRef = ref(null)
 const syncingLocal = ref(false)
 const requestOptions = { silentError: true }
-const { openDirectoryPicker, onDirectoryPicked } = useDirectoryPicker((resolvedPath, options = {}) => {
-  if (!options.partial || !form.value.local_path.trim()) {
-    form.value.local_path = resolvedPath
-  }
-})
 
 const columns = computed(() => [
   { title: '名称', key: 'name', width: 140 },

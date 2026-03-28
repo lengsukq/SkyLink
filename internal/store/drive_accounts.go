@@ -8,6 +8,9 @@ import (
 
 var ErrDriveAccountNotFound = errors.New("drive account not found")
 
+// ErrDriveQuotaBelowUsed 限额小于当前已用量时返回。
+var ErrDriveQuotaBelowUsed = errors.New("quota_bytes must be at least used_bytes")
+
 type CreateDriveAccountParams struct {
 	Username     string
 	PasswordHash string
@@ -129,7 +132,11 @@ func (s *Store) UpdateDriveAccount(id int64, p UpdateDriveAccountParams) (*Drive
 		rootPath = *p.RootPath
 	}
 	if p.QuotaBytes != nil {
-		quota = *p.QuotaBytes
+		q := *p.QuotaBytes
+		if q > 0 && q < current.UsedBytes {
+			return nil, ErrDriveQuotaBelowUsed
+		}
+		quota = q
 	}
 	if p.Enabled != nil {
 		enabled = *p.Enabled

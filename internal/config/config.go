@@ -59,6 +59,9 @@ func Load(path string) (*App, *Cloudflare, *EasyTier, error) {
 	if v := os.Getenv("SKYLINK_DB_PATH"); v != "" {
 		app.DBPath = v
 	}
+	if v, ok := os.LookupEnv("SKYLINK_REQUIRE_ADMIN"); ok {
+		app.RequireAdmin = truthyEnv(v)
+	}
 	if v := os.Getenv("SKYLINK_EASYTIER_RPC"); v != "" {
 		et.RPCAddress = v
 	}
@@ -90,6 +93,19 @@ func mergeApp(dst, src *App) {
 	}
 	if src.ConfigPath != "" {
 		dst.ConfigPath = src.ConfigPath
+	}
+	if src.RequireAdmin {
+		dst.RequireAdmin = true
+	}
+}
+
+func truthyEnv(s string) bool {
+	s = strings.TrimSpace(strings.ToLower(s))
+	switch s {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
 	}
 }
 

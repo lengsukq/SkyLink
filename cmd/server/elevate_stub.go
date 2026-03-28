@@ -2,4 +2,4 @@
 
 package main
 
-func ensureElevatedOnWindows() error { return nil }
+func ensureElevatedOnWindows(_ bool) error { return nil }

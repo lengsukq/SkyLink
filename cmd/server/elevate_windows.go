@@ -12,7 +12,11 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func ensureElevatedOnWindows() error {
+func ensureElevatedOnWindows(requireAdmin bool) error {
+	if !requireAdmin {
+		return nil
+	}
+
 	isAdmin, err := isProcessElevated()
 	if err != nil {
 		return fmt.Errorf("check admin privilege: %w", err)

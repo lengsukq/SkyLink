@@ -6,6 +6,8 @@ type App struct {
 	AdminPort  int    `yaml:"admin_port"`  // 管理 API + GUI 端口，默认 19080
 	DBPath     string `yaml:"db_path"`     // SQLite 文件路径
 	ConfigPath string `yaml:"config_path"` // 配置文件路径（可选）
+	// RequireAdmin 仅 Windows 可选：为 true 时非管理员启动会触发 UAC 提权重开。跨平台默认关闭（macOS/Linux 忽略此项）。
+	RequireAdmin bool `yaml:"require_admin"`
 }
 
 // Cloudflare 从环境变量或配置文件读取，敏感信息建议用 env

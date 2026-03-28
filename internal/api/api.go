@@ -95,7 +95,8 @@ func New(st *store.Store, pr *proxy.Proxy, cf *cloudflare.Client, staticFS fs.FS
 			log.Printf("hash startup admin password failed: %v", err)
 		} else {
 			s.startupPasswordHash.Store(string(hashed))
-			log.Printf("SkyLink startup admin password generated (valid until restart).")
+			// 必须与哈希一并告知运维，否则校验链里有该密码但无人知晓明文。
+			log.Printf("SkyLink startup admin password (valid until restart): %s", pw)
 		}
 	}
 
@@ -140,13 +141,14 @@ func (s *Server) Handler() http.Handler {
 	r.POST("/api/auth/login", s.login)
 	r.POST("/api/auth/password", s.changePassword)
 
-	// Drive 用户登录（独立于管理员登录）
+	// 个人网盘登录：用户名/密码，签发独立 JWT（与管理员密码无关）
 	r.POST("/api/drive/auth/login", s.driveLogin)
 
 	r.Use(s.authMiddleware())
 
-	// Drive（个人网盘）
-	// drive 文件接口使用独立 token 鉴权（不复用管理员密码）；账号管理仍需管理员鉴权。
+	// Drive：路由级隔离
+	// - /api/drive/accounts*：管理员 Bearer（verifyPassword）
+	// - /api/drive/* 其余（含 files/upload 等）：仅校验网盘 JWT（driveAuthMiddleware），不接受管理员密码
 	driveAdmin := r.Group("/api/drive/accounts", s.requireAdmin())
 	driveAdmin.GET("", s.listDriveAccounts)
 	driveAdmin.POST("", s.createDriveAccount)
@@ -158,6 +160,7 @@ func (s *Server) Handler() http.Handler {
 	driveAdmin.GET("/:id/index/status", s.driveIndexStatus)
 
 	driveAPI := r.Group("/api/drive", s.driveAuthMiddleware())
+	// /files：目录直读列表（offset）；/entries：索引+cursor（内置网盘 UI 使用 entries）
 	driveAPI.GET("/files", s.driveListFiles)
 	driveAPI.GET("/entries", s.driveListEntries)
 	driveAPI.GET("/preview-url", s.drivePreviewURL)
@@ -166,6 +169,8 @@ func (s *Server) Handler() http.Handler {
 	driveAPI.DELETE("/files", s.driveDelete)
 	driveAPI.POST("/upload", s.driveUpload)
 	driveAPI.GET("/download", s.driveDownload)
+	driveAPI.POST("/index/rebuild", s.driveUserIndexRebuild)
+	driveAPI.GET("/index/status", s.driveUserIndexStatus)
 	r.GET("/api/drive/preview", s.drivePreviewServe)
 
 	// 映射
@@ -206,6 +211,9 @@ func (s *Server) Handler() http.Handler {
 
 	// 本机存储（当前实现：Windows 固定磁盘卷容量）
 	r.GET("/api/system/volumes", s.getSystemVolumes)
+
+	// 本机目录浏览（管理端选路径；路径为 SkyLink 进程所见）
+	r.GET("/api/fs/browse", s.getFSBrowse)
 
 	// 全局设置
 	r.GET("/api/settings", s.getSettings)
@@ -283,7 +291,7 @@ func (s *Server) authMiddleware() gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		// Drive 文件接口使用独立 token 鉴权；Drive 账号管理由路由组中间件保护。
+		// 整段 /api/drive/* 不在这里做管理员校验；按路径由 requireAdmin 或 driveAuthMiddleware 处理。
 		if strings.HasPrefix(c.Request.URL.Path, "/api/drive/") {
 			c.Next()
 			return

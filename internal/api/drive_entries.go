@@ -11,6 +11,7 @@ import (
 	"github.com/skylink/skylink/internal/store"
 )
 
+// driveListEntries 处理 GET /api/drive/entries：个人网盘 Web UI（DriveUserBrowserPanel）主用的列表接口。
 func (s *Server) driveListEntries(c *gin.Context) {
 	acc := currentDriveAccount(c)
 	if acc == nil {

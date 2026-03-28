@@ -11,6 +11,7 @@ import (
 
 const driveAccountContextKey = "drive_account"
 
+// driveAuthMiddleware 仅接受网盘 JWT（drive.NewToken），与管理员密码、requireAdmin 无关。
 func (s *Server) driveAuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := bearerToken(c.GetHeader("Authorization"))
