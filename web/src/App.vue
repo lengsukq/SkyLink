@@ -77,7 +77,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, watch, provide } from 'vue'
+import { computed, ref, provide } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   NConfigProvider,
@@ -92,10 +92,9 @@ import {
 } from 'naive-ui'
 import NotifierBridge from './components/NotifierBridge.vue'
 import CfAccountFormModal from './components/CfAccountFormModal.vue'
-import api from './api/client'
-import { notifySuccess } from './ui/notify'
 import { ROUTE_PATHS } from './constants/routes'
-import { cfAccountsKey, cfCurrentAccountIdKey, refreshCfStateKey, type CfAccount } from './types/cfContext'
+import { cfAccountsKey, cfCurrentAccountIdKey, refreshCfStateKey } from './types/cfContext'
+import { useCfAppContext } from './composables/useCfAppContext'
 
 const themeOverrides = {
   common: {
@@ -136,11 +135,19 @@ const themeOverrides = {
 const route = useRoute()
 const router = useRouter()
 
-const cfAccounts = ref<CfAccount[]>([])
-const cfCurrentAccountId = ref<number | null>(null)
-const cfAccountsLoading = ref(false)
+const {
+  cfAccounts,
+  cfCurrentAccountId,
+  cfAccountsLoading,
+  isWindows,
+  cfAccountOptions,
+  fetchSettings,
+  fetchCfAccounts,
+  onActivateCfAccount,
+  refreshCfState,
+} = useCfAppContext()
+
 const showCfAccountModal = ref(false)
-const isWindows = ref(false)
 
 const navItems = computed(() => [
   { path: ROUTE_PATHS.dashboard, label: '仪表盘' },
@@ -151,13 +158,6 @@ const navItems = computed(() => [
   ...(isWindows.value ? [{ path: ROUTE_PATHS.windowsTools, label: 'Windows 工具' }] : []),
   { path: ROUTE_PATHS.settings, label: '设置' },
 ])
-
-const cfAccountOptions = computed(() =>
-  cfAccounts.value.map((a) => ({
-    label: a.name || `账号 #${a.id}`,
-    value: a.id,
-  }))
-)
 
 const isLoginPage = computed(
   () => route.path === ROUTE_PATHS.login || route.path === ROUTE_PATHS.driveLogin || route.path === ROUTE_PATHS.drivePortal,
@@ -181,48 +181,6 @@ function onClickManageAccounts() {
   }
 }
 
-async function fetchSettings() {
-  try {
-    const { data } = await api.get('/settings')
-    const id = data?.cf_current_account_id
-    cfCurrentAccountId.value = id && Number(id) > 0 ? Number(id) : null
-  } catch (_) {
-    cfCurrentAccountId.value = null
-  }
-}
-
-async function fetchCfAccounts() {
-  cfAccountsLoading.value = true
-  try {
-    const { data } = await api.get('/cf/accounts')
-    cfAccounts.value = data?.accounts || []
-  } catch (_) {
-    cfAccounts.value = []
-  } finally {
-    cfAccountsLoading.value = false
-  }
-}
-
-async function fetchPlatformFlags() {
-  try {
-    const { data } = await api.get('/stats')
-    isWindows.value = !!data?.is_windows
-  } catch (_) {
-    isWindows.value = false
-  }
-}
-
-async function onActivateCfAccount(id: number | null) {
-  if (!id) return
-  try {
-    await api.put(`/cf/accounts/${id}/activate`)
-    cfCurrentAccountId.value = id
-    notifySuccess('已切换', '当前 Cloudflare 账号已更新')
-  } catch (_) {
-    await fetchSettings()
-  }
-}
-
 function onCfAccountSaved(newId?: number | null) {
   fetchCfAccounts().then(() => {
     if (newId) {
@@ -233,32 +191,9 @@ function onCfAccountSaved(newId?: number | null) {
   })
 }
 
-async function refreshCfState(): Promise<void> {
-  await Promise.all([fetchSettings(), fetchCfAccounts()])
-}
-
 provide(cfCurrentAccountIdKey, cfCurrentAccountId)
 provide(cfAccountsKey, cfAccounts)
 provide(refreshCfStateKey, refreshCfState)
-
-onMounted(() => {
-  if (route.path !== ROUTE_PATHS.login) {
-    fetchSettings()
-    fetchCfAccounts()
-    fetchPlatformFlags()
-  }
-})
-
-watch(
-  () => route.path,
-  (path) => {
-    if (path !== ROUTE_PATHS.login) {
-      fetchSettings()
-      fetchCfAccounts()
-      fetchPlatformFlags()
-    }
-  }
-)
 </script>
 
 <style>

@@ -1,5 +1,8 @@
+import type { AxiosProgressEvent } from 'axios'
 import api from './client'
 // 网盘请求使用与管理员相同的 axios 实例；Authorization 由 client 拦截器按路径自动注入「网盘 JWT」（见 client.ts）。
+
+const silent = { silentError: true as const }
 
 /**
  * 调用 GET /api/drive/files：直接遍历目录的列表（offset/limit）。
@@ -14,10 +17,7 @@ export async function driveUserListFiles(params: {
   offset?: number
   limit?: number
 }) {
-  const res = await api.get('/drive/files', {
-    params,
-    silentError: true,
-  } as any)
+  const res = await api.get('/drive/files', { ...silent, params })
   return res.data
 }
 
@@ -34,40 +34,22 @@ export async function driveUserListEntries(params: {
   limit?: number
   include_dirs?: boolean
 }) {
-  const res = await api.get('/drive/entries', {
-    params,
-    silentError: true,
-  } as any)
+  const res = await api.get('/drive/entries', { ...silent, params })
   return res.data
 }
 
 export async function driveUserMkdir(path: string) {
-  const res = await api.post(
-    '/drive/folders',
-    { path },
-    {
-      silentError: true,
-    } as any,
-  )
+  const res = await api.post('/drive/folders', { path }, silent)
   return res.data
 }
 
 export async function driveUserRename(from: string, to: string) {
-  const res = await api.post(
-    '/drive/rename',
-    { from, to },
-    {
-      silentError: true,
-    } as any,
-  )
+  const res = await api.post('/drive/rename', { from, to }, silent)
   return res.data
 }
 
 export async function driveUserDelete(path: string) {
-  const res = await api.delete('/drive/files', {
-    params: { path },
-    silentError: true,
-  } as any)
+  const res = await api.delete('/drive/files', { ...silent, params: { path } })
   return res.data
 }
 
@@ -80,29 +62,26 @@ export async function driveUserUpload(
   form.append('path', path || '')
   form.append('file', file)
   const res = await api.post('/drive/upload', form, {
-    silentError: true,
-    onUploadProgress: (evt: any) => {
+    ...silent,
+    onUploadProgress: (evt: AxiosProgressEvent) => {
       if (!opts?.onProgress) return
-      opts.onProgress(Number(evt?.loaded) || 0, evt?.total)
+      opts.onProgress(Number(evt.loaded) || 0, evt.total)
     },
-  } as any)
+  })
   return res.data
 }
 
 export async function driveUserDownloadBlob(path: string) {
   const res = await api.get('/drive/download', {
+    ...silent,
     params: { path },
     responseType: 'blob',
-    silentError: true,
-  } as any)
+  })
   return res.data as Blob
 }
 
 export async function driveUserGetPreviewUrl(params: { path: string; expires?: number }) {
-  const res = await api.get('/drive/preview-url', {
-    params,
-    silentError: true,
-  } as any)
+  const res = await api.get('/drive/preview-url', { ...silent, params })
   return res.data as { ok?: boolean; url?: string; expires_in?: number }
 }
 
@@ -117,11 +96,11 @@ export type DriveUserIndexStatus = {
 
 /** 重建当前账号的网盘索引（与磁盘对齐）；完成后需重新拉取列表。 */
 export async function driveUserIndexRebuild() {
-  const res = await api.post('/drive/index/rebuild', {}, { silentError: true } as any)
+  const res = await api.post('/drive/index/rebuild', {}, silent)
   return res.data as { ok?: boolean }
 }
 
 export async function driveUserIndexStatus() {
-  const res = await api.get('/drive/index/status', { silentError: true } as any)
+  const res = await api.get('/drive/index/status', silent)
   return res.data as { status?: DriveUserIndexStatus }
 }

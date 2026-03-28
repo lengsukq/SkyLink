@@ -1,7 +1,13 @@
-import axios, { type AxiosInstance, type AxiosError } from 'axios'
+import axios, {
+  type AxiosInstance,
+  type AxiosError,
+  type InternalAxiosRequestConfig,
+} from 'axios'
 import { notifyError } from '../ui/notify'
 import { ROUTE_PATHS } from '../constants/routes'
 import { STORAGE_KEYS } from '../constants/storage'
+import { apiRequestPath } from '../utils/apiRequestPath'
+import { getApiErrorMessage, isSilentAxiosError } from '../utils/apiError'
 
 const client: AxiosInstance = axios.create({
   baseURL: '/api',
@@ -10,7 +16,7 @@ const client: AxiosInstance = axios.create({
 })
 
 function shouldNotifyGlobally(error: unknown): boolean {
-  return (error as any)?.config?.silentError !== true
+  return !isSilentAxiosError(error)
 }
 
 function adminToken(): string {
@@ -19,27 +25,6 @@ function adminToken(): string {
 
 function driveUserToken(): string {
   return localStorage.getItem(STORAGE_KEYS.driveUserToken) || ''
-}
-
-/**
- * 将请求路径规范为「相对 /api」的形式，例如 /drive/files。
- * 避免 baseURL、查询串导致误判。
- */
-function apiRequestPath(config: { url?: string }): string {
-  let u = String(config.url || '')
-  if (!u) return ''
-  if (u.startsWith('http')) {
-    try {
-      u = new URL(u).pathname
-    } catch {
-      return u
-    }
-  }
-  const q = u.indexOf('?')
-  if (q >= 0) u = u.slice(0, q)
-  if (u.startsWith('/api/')) u = u.slice(4)
-  if (!u.startsWith('/')) u = `/${u}`
-  return u
 }
 
 function isDriveAuthLoginPath(p: string): boolean {
@@ -58,19 +43,25 @@ function isDriveUserAPIPath(p: string): boolean {
   return true
 }
 
-client.interceptors.request.use((config) => {
+function headerBag(config: InternalAxiosRequestConfig): Record<string, unknown> {
+  if (!config.headers) {
+    config.headers = {} as InternalAxiosRequestConfig['headers']
+  }
+  return config.headers as unknown as Record<string, unknown>
+}
+
+client.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   // 默认 Content-Type: application/json 会破坏 multipart：须让浏览器带上带 boundary 的 multipart/form-data
   if (config.data instanceof FormData && config.headers) {
     if (typeof config.headers.delete === 'function') {
       config.headers.delete('Content-Type')
     } else {
-      delete (config.headers as Record<string, unknown>)['Content-Type']
+      delete headerBag(config)['Content-Type']
     }
   }
 
   const path = apiRequestPath(config)
-  const configAny = config as any
-  const headers = (configAny.headers ??= {}) as Record<string, unknown>
+  const headers = headerBag(config)
 
   // 网盘用户登录：匿名，禁止附带管理员 Token（避免与网盘会话混淆）
   if (isDriveAuthLoginPath(path)) {
@@ -104,12 +95,7 @@ client.interceptors.response.use(
   (r) => r,
   (e: AxiosError) => {
     const status = e.response?.status
-    const data = e.response?.data as any
-    const msg =
-      (typeof data?.error === 'string' && data.error) ||
-      (typeof data?.warning === 'string' && data.warning) ||
-      e.message ||
-      'Request failed'
+    const msg = getApiErrorMessage(e)
 
     if (e.response?.status === 401) {
       const path = apiRequestPath(e.config || {})
@@ -150,3 +136,4 @@ client.interceptors.response.use(
 )
 
 export default client
+export { apiRequestPath } from '../utils/apiRequestPath'
