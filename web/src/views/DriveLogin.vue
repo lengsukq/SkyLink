@@ -3,7 +3,10 @@
     <div class="skylink-glass-card-shell w-full max-w-md">
       <n-card class="skylink-glass-card-inner">
         <n-space vertical size="large">
-          <div class="text-center text-lg font-semibold tracking-tight text-slate-800">个人网盘登录</div>
+          <div class="flex flex-col items-center gap-4">
+            <sky-link-logo size="md" />
+            <div class="text-center text-lg font-semibold tracking-tight text-slate-800">个人网盘登录</div>
+          </div>
           <n-form :model="form" label-placement="top">
             <n-form-item label="用户名">
               <n-input v-model:value="form.username" placeholder="请输入用户名" />
@@ -26,6 +29,7 @@ import { NButton, NCard, NForm, NFormItem, NInput, NSpace } from 'naive-ui'
 import api from '../api/client'
 import { STORAGE_KEYS } from '../constants/storage'
 import { ROUTE_PATHS } from '../constants/routes'
+import SkyLinkLogo from '../components/SkyLinkLogo.vue'
 import { notifyError, notifySuccess } from '../ui/notify'
 
 const router = useRouter()

@@ -1,27 +1,76 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { ROUTE_PATHS } from '../constants/routes'
-import { STORAGE_KEYS } from '../constants/storage'
+import { resolveNavigation } from './guards'
 
 const routes = [
-  { path: ROUTE_PATHS.login, name: 'Login', component: () => import('../views/Login.vue') },
-  { path: ROUTE_PATHS.driveLogin, name: 'DriveLogin', component: () => import('../views/DriveLogin.vue') },
-  { path: ROUTE_PATHS.drivePortal, name: 'DrivePortal', component: () => import('../views/DrivePortal.vue') },
-  { path: ROUTE_PATHS.root, redirect: ROUTE_PATHS.dashboard },
-  { path: ROUTE_PATHS.dashboard, name: 'Dashboard', component: () => import('../views/Dashboard.vue') },
-  { path: ROUTE_PATHS.mappings, name: 'Mappings', component: () => import('../views/Mappings.vue') },
-  {
-    path: ROUTE_PATHS.cloudflareCenter,
-    name: 'CloudflareCenter',
-    component: () => import('../views/CloudflareCenter.vue'),
-  },
   { path: ROUTE_PATHS.cloudflareLegacy, redirect: ROUTE_PATHS.cloudflareCenter },
   { path: ROUTE_PATHS.ddnsLegacy, redirect: ROUTE_PATHS.cloudflareCenter },
-  { path: ROUTE_PATHS.easyTier, name: 'EasyTier', component: () => import('../views/EasyTier.vue') },
-  { path: ROUTE_PATHS.fileServices, name: 'FileServices', component: () => import('../views/FileServices.vue') },
-  { path: ROUTE_PATHS.windowsTools, name: 'WindowsTools', component: () => import('../views/WindowsTools.vue') },
   { path: ROUTE_PATHS.webDevLegacy, redirect: ROUTE_PATHS.fileServices },
   { path: ROUTE_PATHS.smbLegacy, redirect: ROUTE_PATHS.windowsTools },
-  { path: ROUTE_PATHS.settings, name: 'Settings', component: () => import('../views/Settings.vue') },
+  {
+    path: ROUTE_PATHS.login,
+    component: () => import('../layouts/MinimalLayout.vue'),
+    children: [{ path: '', name: 'Login', component: () => import('../views/Login.vue') }],
+  },
+  {
+    path: ROUTE_PATHS.driveLogin,
+    component: () => import('../layouts/MinimalLayout.vue'),
+    children: [{ path: '', name: 'DriveLogin', component: () => import('../views/DriveLogin.vue') }],
+  },
+  {
+    path: ROUTE_PATHS.drivePortal,
+    component: () => import('../layouts/MinimalLayout.vue'),
+    children: [{ path: '', name: 'DrivePortal', component: () => import('../views/DrivePortal.vue') }],
+  },
+  {
+    path: '/',
+    component: () => import('../layouts/AdminLayout.vue'),
+    children: [
+      { path: '', redirect: { name: 'Dashboard' } },
+      {
+        path: 'dashboard',
+        name: 'Dashboard',
+        component: () => import('../views/Dashboard.vue'),
+        meta: { navLabel: '仪表盘', navOrder: 10 },
+      },
+      {
+        path: 'mappings',
+        name: 'Mappings',
+        component: () => import('../views/Mappings.vue'),
+        meta: { navLabel: '映射', navOrder: 20 },
+      },
+      {
+        path: 'cloudflare-center',
+        name: 'CloudflareCenter',
+        component: () => import('../views/CloudflareCenter.vue'),
+        meta: { navLabel: 'Cloudflare', navOrder: 30 },
+      },
+      {
+        path: 'easytier',
+        name: 'EasyTier',
+        component: () => import('../views/EasyTier.vue'),
+        meta: { navLabel: 'EasyTier', navOrder: 40 },
+      },
+      {
+        path: 'file-services',
+        name: 'FileServices',
+        component: () => import('../views/FileServices.vue'),
+        meta: { navLabel: '文件服务', navOrder: 50 },
+      },
+      {
+        path: 'windows-tools',
+        name: 'WindowsTools',
+        component: () => import('../views/WindowsTools.vue'),
+        meta: { navLabel: 'Windows 工具', navOrder: 55, requiresWindows: true },
+      },
+      {
+        path: 'settings',
+        name: 'Settings',
+        component: () => import('../views/Settings.vue'),
+        meta: { navLabel: '设置', navOrder: 100 },
+      },
+    ],
+  },
 ]
 
 const router = createRouter({
@@ -29,20 +78,6 @@ const router = createRouter({
   routes,
 })
 
-router.beforeEach((to) => {
-  // Drive user portal is independent from admin auth.
-  if (to.path === ROUTE_PATHS.driveLogin) return true
-  if (to.path === ROUTE_PATHS.drivePortal) {
-    const driveToken = localStorage.getItem(STORAGE_KEYS.driveUserToken) || ''
-    if (!driveToken.trim()) return { path: ROUTE_PATHS.driveLogin }
-    return true
-  }
-
-  const token = localStorage.getItem(STORAGE_KEYS.skylinkToken) || ''
-  if (to.path === ROUTE_PATHS.login) return true
-  if (!token.trim()) return { path: ROUTE_PATHS.login }
-  return true
-})
+router.beforeEach((to) => resolveNavigation(to))
 
 export default router
-

@@ -2,7 +2,7 @@
   <div class="login-page skylink-auth-bg">
     <div class="login-page__content">
       <div class="login-page__brand">
-        <h1 class="login-page__brand-title">SKYLINK</h1>
+        <sky-link-logo size="lg" />
         <p class="login-page__brand-subtitle">
           智能 DNS 映射与边缘控制台，统一管理你的域名与流量入口。
         </p>
@@ -56,6 +56,7 @@ import api from '../api/client'
 import { notifySuccess } from '../ui/notify'
 import { STORAGE_KEYS } from '../constants/storage'
 import { ROUTE_PATHS } from '../constants/routes'
+import SkyLinkLogo from '../components/SkyLinkLogo.vue'
 
 const router = useRouter()
 const loading = ref(false)
@@ -103,18 +104,6 @@ async function onLogin() {
   max-width: 520px;
 }
 
-.login-page__brand-title {
-  font-size: 52px;
-  line-height: 1.02;
-  font-weight: 800;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  background: linear-gradient(120deg, #38bdf8 0%, #818cf8 40%, #a855f7 80%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
 .login-page__brand-subtitle {
   font-size: 16px;
   line-height: 1.7;
@@ -143,10 +132,6 @@ async function onLogin() {
 @media (max-width: 960px) {
   .login-page__content {
     gap: 32px;
-  }
-
-  .login-page__brand-title {
-    font-size: 40px;
   }
 }
 
