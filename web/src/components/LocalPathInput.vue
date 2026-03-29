@@ -31,7 +31,7 @@
     <n-modal
       v-model:show="showBrowse"
       preset="card"
-      :style="{ width: 'min(600px, 94vw)' }"
+      :style="{ width: 'min(600px, 94vw)', maxHeight: 'min(640px, 92vh)' }"
       :mask-closable="false"
       :auto-focus="false"
       class="local-path-modal"
@@ -66,8 +66,9 @@
           </n-button>
         </div>
 
-        <n-spin :show="browseLoading">
-          <n-scrollbar class="local-path-modal__scroll" trigger="none">
+        <div class="local-path-modal__scroll-outer">
+          <n-spin :show="browseLoading" class="local-path-modal__spin">
+            <n-scrollbar class="local-path-modal__scroll" trigger="hover">
             <div v-if="browseEntries.length > 0" class="local-path-modal__list" role="list">
               <button
                 v-for="e in browseEntries"
@@ -97,8 +98,9 @@
                 </n-text>
               </template>
             </n-empty>
-          </n-scrollbar>
-        </n-spin>
+            </n-scrollbar>
+          </n-spin>
+        </div>
       </div>
 
       <template #footer>
@@ -271,8 +273,21 @@ function pickCurrent() {
   font-size: 12px;
 }
 
+.local-path-modal :deep(.n-card) {
+  max-height: min(640px, 92vh);
+  display: flex;
+  flex-direction: column;
+}
+.local-path-modal :deep(.n-card__content) {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
 .local-path-modal :deep(.n-card-header) {
   padding-bottom: 8px;
+  flex-shrink: 0;
 }
 .local-path-modal__head {
   padding-right: 8px;
@@ -290,9 +305,12 @@ function pickCurrent() {
   color: var(--n-text-color-3);
 }
 .local-path-modal__body {
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  overflow: hidden;
 }
 .local-path-modal__tip {
   font-size: 13px;
@@ -323,13 +341,57 @@ function pickCurrent() {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
-.local-path-modal__scroll {
-  max-height: min(280px, 40vh);
+.local-path-modal__tip,
+.local-path-modal__location {
+  flex-shrink: 0;
+}
+.local-path-modal__scroll-outer {
+  flex: 1 1 auto;
   min-height: 120px;
+  max-height: min(420px, 48vh);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   border: 1px solid var(--n-border-color);
   border-radius: 8px;
   background: var(--n-color-modal);
+}
+.local-path-modal__spin {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.local-path-modal__spin :deep(.n-spin-container) {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.local-path-modal__spin :deep(.n-spin-content) {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.local-path-modal__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  max-height: none;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+.local-path-modal__scroll :deep(.n-scrollbar) {
+  height: 100%;
+  max-height: 100%;
+}
+.local-path-modal__scroll :deep(.n-scrollbar-container) {
+  max-height: 100%;
 }
 .local-path-modal__list {
   padding: 4px 0;
@@ -392,6 +454,7 @@ function pickCurrent() {
   padding: 20px 16px 24px;
 }
 .local-path-modal :deep(.n-card__footer) {
+  flex-shrink: 0;
   border-top: 1px solid var(--n-border-color);
 }
 </style>
