@@ -18,25 +18,18 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { NEmpty, NButton } from 'naive-ui'
 
-const props = defineProps({
-  title: {
-    type: String,
-    required: true,
-  },
-  description: {
-    type: String,
-    default: '',
-  },
-  primaryText: {
-    type: String,
-    default: '',
-  },
-})
+defineProps<{
+  title: string
+  description?: string
+  primaryText?: string
+}>()
 
-const emit = defineEmits(['primary'])
+const emit = defineEmits<{
+  primary: []
+}>()
 
 function onPrimary() {
   emit('primary')

@@ -1,4 +1,5 @@
 import type { AxiosProgressEvent } from 'axios'
+import { getCachedPreviewUrl, setCachedPreviewUrl } from '../utils/drivePreviewUrlCache'
 import api from './client'
 // 网盘请求使用与管理员相同的 axios 实例；Authorization 由 client 拦截器按路径自动注入「网盘 JWT」（见 client.ts）。
 
@@ -53,6 +54,8 @@ export async function driveUserDelete(path: string) {
   return res.data
 }
 
+// 预留：若后端增加「复制文件」能力，可在此封装 POST /api/drive/copy 并在 UI 中对接。
+
 export async function driveUserUpload(
   path: string,
   file: File,
@@ -83,6 +86,15 @@ export async function driveUserDownloadBlob(path: string) {
 export async function driveUserGetPreviewUrl(params: { path: string; expires?: number }) {
   const res = await api.get('/drive/preview-url', { ...silent, params })
   return res.data as { ok?: boolean; url?: string; expires_in?: number }
+}
+
+/** Uses in-memory cache to avoid duplicate preview-url requests (grid + modal). */
+export async function driveUserGetPreviewUrlCached(params: { path: string; expires?: number }) {
+  const hit = getCachedPreviewUrl(params.path)
+  if (hit) return { url: hit, expires_in: 0 as number | undefined }
+  const data = await driveUserGetPreviewUrl(params)
+  if (data.url) setCachedPreviewUrl(params.path, String(data.url), Number(data.expires_in) || 3600)
+  return data
 }
 
 export type DriveUserIndexStatus = {

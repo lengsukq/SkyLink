@@ -1,30 +1,53 @@
 <template>
-  <div class="layout">
+  <div class="layout" :class="{ 'layout--narrow': isNarrow }">
     <div
-      class="sidebar rounded-2xl border border-white/50 bg-white/55 p-2 shadow-sm shadow-slate-900/5 backdrop-blur-xl"
+      v-show="!isNarrow"
+      class="sidebar sidebar-desktop rounded-2xl border border-white/50 bg-white/55 p-2 shadow-sm shadow-slate-900/5 backdrop-blur-xl"
     >
       <n-menu :value="activeCategory" :options="categoryOptions" @update:value="onCategory" />
     </div>
 
-    <div class="main rounded-2xl border border-white/35 bg-white/45 p-4 shadow-sm shadow-slate-900/5 backdrop-blur-md md:p-5">
+    <div
+      class="main rounded-2xl border border-white/35 bg-white/45 p-4 shadow-sm shadow-slate-900/5 backdrop-blur-md md:p-5"
+      :class="{ 'main--drop': dragOver }"
+      @dragenter.prevent="onDragEnter"
+      @dragleave.prevent="onDragLeave"
+      @dragover.prevent="onDragOver"
+      @drop.prevent="onDropFiles"
+    >
       <n-space vertical size="large">
+        <div v-if="isNarrow" class="category-mobile">
+          <n-select
+            v-model:value="activeCategory"
+            :options="categorySelectOptions"
+            placeholder="分类"
+            style="width: 100%"
+            @update:value="onCategory"
+          />
+        </div>
+
         <div class="toolbar">
-          <n-space align="center" wrap>
-            <n-input v-model:value="path" placeholder="路径（相对根目录，例如：docs/）" style="min-width: 240px" />
-            <n-input v-model:value="q" placeholder="文件名搜索（可选）" style="min-width: 200px" />
-            <n-space align="center" :size="8">
-              <n-select v-model:value="sort" :options="sortOptions" placeholder="排序" style="width: 160px" />
-              <n-select v-model:value="order" :options="orderOptions" placeholder="顺序" style="width: 120px" />
+          <div class="toolbar-row toolbar-row--path">
+            <n-input v-model:value="path" placeholder="路径（相对根目录，例如：docs/）" class="toolbar-field-grow" />
+            <n-space :size="8" wrap>
+              <n-button type="primary" :loading="loading" @click="refreshWithToast(true)">查询</n-button>
+              <n-button v-if="isNarrow" secondary size="small" :disabled="!selectedItem" @click="detailsDrawerOpen = true">详情</n-button>
+            </n-space>
+          </div>
+          <div class="toolbar-row toolbar-row--filters">
+            <n-input v-model:value="q" placeholder="文件名搜索（可选）" class="toolbar-field-grow" />
+            <n-space align="center" :size="8" wrap>
+              <n-select v-model:value="sort" :options="sortOptions" placeholder="排序" style="width: 140px" />
+              <n-select v-model:value="order" :options="orderOptions" placeholder="顺序" style="width: 100px" />
               <n-switch v-model:value="recursive" />
               <span class="hint">递归</span>
             </n-space>
-            <n-space align="center" :size="8">
-              <n-button type="primary" :loading="loading" @click="refreshWithToast(true)">查询</n-button>
+          </div>
+          <div class="toolbar-row toolbar-row--actions">
+            <n-space align="center" :size="8" wrap>
               <n-tooltip trigger="hover">
                 <template #trigger>
-                  <n-button secondary :loading="reindexing" :disabled="!canUpload" @click="syncLocalIndex">
-                    同步本地
-                  </n-button>
+                  <n-button secondary :loading="reindexing" :disabled="!canUpload" @click="syncLocalIndex">同步本地</n-button>
                 </template>
                 重新扫描账号根目录并更新索引，使列表与磁盘上的真实文件一致（例如在服务器上直接增删文件后使用）
               </n-tooltip>
@@ -32,13 +55,15 @@
               <n-button secondary :disabled="!canUpload" @click="pickUpload">上传</n-button>
               <input ref="fileInput" type="file" class="hidden" multiple @change="onFilePicked" />
             </n-space>
-            <n-space align="center" :size="8">
-              <n-button secondary :disabled="!selectedPaths.length" @click="batchDelete">删除</n-button>
+            <n-space align="center" :size="8" wrap>
+              <n-button secondary :disabled="!selectedPaths.length" @click="confirmBatchDelete">删除</n-button>
               <n-button secondary :disabled="!clipboardCut" @click="pasteCut">粘贴</n-button>
               <n-button secondary @click="logout">退出</n-button>
             </n-space>
-          </n-space>
+          </div>
         </div>
+
+        <n-alert v-if="dragOver && canUpload" type="info" class="drop-hint">松开鼠标以上传到当前路径</n-alert>
 
         <n-space align="center" justify="space-between">
           <div class="crumbs">
@@ -54,17 +79,7 @@
           </n-space>
         </n-space>
 
-        <n-card v-if="queue.length" size="small" class="uploader">
-          <n-space vertical>
-            <div class="uploader-title">上传队列</div>
-            <n-space v-for="item in queue" :key="item.id" justify="space-between" align="center">
-              <div class="uploader-name">{{ item.name }}</div>
-              <div class="uploader-right">
-                <n-progress type="line" :percentage="item.percent" :processing="item.status === 'uploading'" :indicator-placement="'inside'" />
-              </div>
-            </n-space>
-          </n-space>
-        </n-card>
+        <drive-upload-queue-card :queue="queue" />
 
         <div class="content">
           <div class="table">
@@ -80,11 +95,15 @@
               </n-space>
             </n-space>
 
+            <n-spin v-if="loading && !rows.length" class="list-loading" />
+            <n-empty v-else-if="!loading && !rows.length" description="此目录暂无内容，可上传文件或新建文件夹" class="list-empty" />
+
             <drive-grid-view
-              v-if="viewMode === 'grid'"
+              v-else-if="viewMode === 'grid'"
               :items="rows"
+              :selected-paths="selectedPaths"
               @open="openOrEnter"
-              @select="(item) => (selectedPaths = [item.path])"
+              @select="onGridSelect"
               @context="onGridContext"
             />
 
@@ -102,7 +121,8 @@
               @update:checked-row-keys="onChecked"
             />
           </div>
-          <div class="details">
+
+          <div v-show="!isNarrow" class="details details-desktop">
             <drive-details-sidebar
               :item="selectedItem"
               @preview="selectedItem && openPreview(selectedItem)"
@@ -118,12 +138,28 @@
     </div>
   </div>
 
+  <n-drawer v-model:show="detailsDrawerOpen" :width="320" placement="right" display-directive="show">
+    <drive-details-sidebar
+      :item="selectedItem"
+      @preview="selectedItem && openPreview(selectedItem)"
+      @download="selectedItem && download(selectedItem)"
+      @delete="selectedItem && remove(selectedItem)"
+      @rename="selectedItem && openRename(selectedItem)"
+      @cut="selectedItem && cut(selectedItem)"
+      @copy-path="selectedItem && copyPath(selectedItem)"
+    />
+  </n-drawer>
+
   <drive-preview-modal
     v-model="previewOpen"
     :path="previewItem?.path || ''"
     :name="previewItem?.name || ''"
     :kind="previewKind"
     :size-bytes="previewItem?.size_bytes || 0"
+    :preview-nav-total="previewNavMeta.total"
+    :preview-nav-index="previewNavMeta.index"
+    @nav-prev="previewNavPrev"
+    @nav-next="previewNavNext"
   />
 
   <n-dropdown
@@ -156,24 +192,36 @@
       </n-space>
     </template>
   </n-modal>
+
+  <n-modal v-model:show="batchDeleteModal" preset="card" title="确认删除" style="max-width: 420px">
+    <div>确定删除已选的 {{ pendingDeleteCount }} 项？此操作不可恢复。</div>
+    <template #footer>
+      <n-space justify="end">
+        <n-button @click="batchDeleteModal = false">取消</n-button>
+        <n-button type="error" :loading="batchDeleting" @click="runBatchDelete">删除</n-button>
+      </n-space>
+    </template>
+  </n-modal>
 </template>
 
 <script setup lang="ts">
-import { computed, h, ref } from 'vue'
+import { computed, h, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
+  NAlert,
   NBreadcrumb,
   NBreadcrumbItem,
   NButton,
-  NCard,
   NDataTable,
+  NDrawer,
   NDropdown,
+  NEmpty,
   NInput,
   NMenu,
   NModal,
-  NProgress,
   NSelect,
   NSpace,
+  NSpin,
   NSwitch,
   NTooltip,
 } from 'naive-ui'
@@ -189,24 +237,33 @@ import { useDriveContextMenu } from '../../composables/drive/useDriveContextMenu
 import { useDriveActions } from '../../composables/drive/useDriveActions'
 import { useDriveModals } from '../../composables/drive/useDriveModals'
 import { useDriveUploadQueue } from '../../composables/drive/useDriveUploadQueue'
+import { useMatchMedia } from '../../composables/useMatchMedia'
 import { driveUserIndexRebuild, driveUserIndexStatus } from '../../api/driveUserClient'
+import { isEntryPreviewable } from '../../utils/drivePreview'
 import DrivePreviewModal from './DrivePreviewModal.vue'
 import DriveDetailsSidebar from './fm/DriveDetailsSidebar.vue'
 import DriveGridView from './fm/DriveGridView.vue'
+import DriveUploadQueueCard from './DriveUploadQueueCard.vue'
 
 const router = useRouter()
+const isNarrow = useMatchMedia('(max-width: 899px)')
+const detailsDrawerOpen = ref(false)
 
 const { path, q, activeCategory, recursive, sort, order, loading, rows, breadcrumb, canLoadMore, refresh, goTo } = useDriveQueryState()
 const selectedPaths = ref<string[]>([])
+const gridAnchorIndex = ref(-1)
 
 const fileInput = ref<HTMLInputElement | null>(null)
 
 const categoryOptions = DRIVE_CATEGORY_OPTIONS
+const categorySelectOptions = DRIVE_CATEGORY_OPTIONS.map((o) => ({ label: o.label, value: o.key }))
 const sortOptions = DRIVE_SORT_OPTIONS
 const orderOptions = DRIVE_ORDER_OPTIONS
 const canUpload = computed(() => !!(localStorage.getItem(STORAGE_KEYS.driveUserToken) || '').trim() && !loading.value)
 
 const reindexing = ref(false)
+const dragOver = ref(false)
+let dragDepth = 0
 
 const rowKey = (row: DriveEntry) => row.path
 
@@ -218,89 +275,96 @@ const selectedItem = computed(() => {
 
 const viewMode = ref<DriveViewMode>('list')
 
-const columns = computed(() => [
-  { type: 'selection' as const, width: 40 },
-  {
-    title: '名称',
-    key: 'name',
-    minWidth: 240,
-    render(row: DriveEntry) {
-      const clickable = !recursive.value && row.is_dir
-      return h(
-        'span',
-        {
-          class: clickable ? 'link' : '',
-          onClick: () => {
-            if (clickable) goTo(row.path)
+const columns = computed(() => {
+  const base: any[] = [
+    { type: 'selection' as const, width: 40 },
+    {
+      title: '名称',
+      key: 'name',
+      minWidth: 240,
+      render(row: DriveEntry) {
+        const clickable = !recursive.value && row.is_dir
+        return h(
+          'span',
+          {
+            class: clickable ? 'link' : '',
+            onClick: () => {
+              if (clickable) goTo(row.path)
+            },
           },
-        },
-        row.name,
-      )
+          row.name,
+        )
+      },
     },
-  },
-  { title: '路径', key: 'path', minWidth: 260 },
-  {
-    title: '类型',
-    key: 'type',
-    width: 100,
-    render(row: DriveEntry) {
-      return row.is_dir ? '目录' : row.type
+  ]
+  if (recursive.value) {
+    base.push({ title: '路径', key: 'path', minWidth: 260 })
+  }
+  base.push(
+    {
+      title: '类型',
+      key: 'type',
+      width: 100,
+      render(row: DriveEntry) {
+        return row.is_dir ? '目录' : row.type
+      },
     },
-  },
-  {
-    title: '大小',
-    key: 'size',
-    width: 120,
-    render(row: DriveEntry) {
-      return row.is_dir ? '-' : formatBytes(row.size_bytes)
+    {
+      title: '大小',
+      key: 'size',
+      width: 120,
+      render(row: DriveEntry) {
+        return row.is_dir ? '-' : formatBytes(row.size_bytes)
+      },
     },
-  },
-  {
-    title: '操作',
-    key: 'actions',
-    width: 240,
-    render(row: DriveEntry) {
-      return h(
-        NSpace,
-        { size: 8 },
-        {
-          default: () => [
-            h(
-              NButton,
-              {
-                size: 'small',
-                secondary: true,
-                disabled: row.is_dir,
-                onClick: () => openPreview(row),
-              },
-              { default: () => '预览' },
-            ),
-            h(
-              NButton,
-              {
-                size: 'small',
-                secondary: true,
-                disabled: row.is_dir,
-                onClick: () => download(row),
-              },
-              { default: () => '下载' },
-            ),
-            h(
-              NButton,
-              {
-                size: 'small',
-                tertiary: true,
-                type: 'error',
-                onClick: () => remove(row),
-              },
-              { default: () => '删除' },
-            ),
-          ],
-        },
-      )
+    {
+      title: '操作',
+      key: 'actions',
+      width: 240,
+      render(row: DriveEntry) {
+        return h(
+          NSpace,
+          { size: 8 },
+          {
+            default: () => [
+              h(
+                NButton,
+                {
+                  size: 'small',
+                  secondary: true,
+                  disabled: row.is_dir,
+                  onClick: () => openPreview(row),
+                },
+                { default: () => '预览' },
+              ),
+              h(
+                NButton,
+                {
+                  size: 'small',
+                  secondary: true,
+                  disabled: row.is_dir,
+                  onClick: () => download(row),
+                },
+                { default: () => '下载' },
+              ),
+              h(
+                NButton,
+                {
+                  size: 'small',
+                  tertiary: true,
+                  type: 'error',
+                  onClick: () => remove(row),
+                },
+                { default: () => '删除' },
+              ),
+            ],
+          },
+        )
+      },
     },
-  },
-])
+  )
+  return base
+})
 
 function rowProps(row: DriveEntry) {
   return {
@@ -313,7 +377,6 @@ function rowProps(row: DriveEntry) {
       openContextMenu(row, e)
     },
     onClick: () => {
-      // Keep selection in sync with details panel.
       selectedPaths.value = [row.path]
     },
   }
@@ -386,6 +449,30 @@ const {
   notifyError,
 })
 
+const previewableRows = computed(() => rows.value.filter((r) => isEntryPreviewable(r)))
+
+const previewNavMeta = computed(() => {
+  const list = previewableRows.value
+  const p = previewItem.value?.path
+  if (!p || !list.length) return { total: 0, index: 0 }
+  const idx = list.findIndex((r) => r.path === p)
+  return { total: list.length, index: idx >= 0 ? idx : 0 }
+})
+
+function previewNavPrev() {
+  const list = previewableRows.value
+  const i = list.findIndex((r) => r.path === previewItem.value?.path)
+  if (i <= 0) return
+  openPreview(list[i - 1])
+}
+
+function previewNavNext() {
+  const list = previewableRows.value
+  const i = list.findIndex((r) => r.path === previewItem.value?.path)
+  if (i < 0 || i >= list.length - 1) return
+  openPreview(list[i + 1])
+}
+
 function pickUpload() {
   if (!fileInput.value) return
   fileInput.value.value = ''
@@ -399,6 +486,32 @@ async function onFilePicked(e: Event) {
   enqueueFiles(files)
 }
 
+function onDragEnter() {
+  dragDepth += 1
+  dragOver.value = true
+}
+
+function onDragLeave() {
+  dragDepth -= 1
+  if (dragDepth <= 0) {
+    dragDepth = 0
+    dragOver.value = false
+  }
+}
+
+function onDragOver() {
+  dragOver.value = true
+}
+
+function onDropFiles(e: DragEvent) {
+  dragDepth = 0
+  dragOver.value = false
+  if (!canUpload.value) return
+  const dt = e.dataTransfer
+  if (!dt?.files?.length) return
+  enqueueFiles(Array.from(dt.files))
+}
+
 function onCategory(v: any) {
   activeCategory.value = v
   refreshWithToast(true)
@@ -408,8 +521,25 @@ function onChecked(keys: any) {
   selectedPaths.value = (keys || []) as string[]
 }
 
-async function batchDelete() {
-  await batchDeleteRaw(selectedPaths.value)
+const batchDeleteModal = ref(false)
+const batchDeleting = ref(false)
+const pendingDeleteCount = ref(0)
+
+function confirmBatchDelete() {
+  const n = selectedPaths.value.length
+  if (!n) return
+  pendingDeleteCount.value = n
+  batchDeleteModal.value = true
+}
+
+async function runBatchDelete() {
+  batchDeleting.value = true
+  try {
+    await batchDeleteRaw(selectedPaths.value)
+    batchDeleteModal.value = false
+  } finally {
+    batchDeleting.value = false
+  }
 }
 
 const { queue, enqueueFiles } = useDriveUploadQueue({
@@ -426,8 +556,32 @@ function openOrEnter(item: DriveEntry) {
   openOrEnterRaw(item, goTo)
 }
 
+function onGridSelect(item: DriveEntry, e: MouseEvent) {
+  const list = rows.value
+  const idx = list.findIndex((i) => i.path === item.path)
+  if (e.shiftKey && gridAnchorIndex.value >= 0) {
+    const a = Math.min(gridAnchorIndex.value, idx)
+    const b = Math.max(gridAnchorIndex.value, idx)
+    selectedPaths.value = list.slice(a, b + 1).map((r) => r.path)
+    return
+  }
+  if (e.ctrlKey || e.metaKey) {
+    const set = new Set(selectedPaths.value)
+    if (set.has(item.path)) set.delete(item.path)
+    else set.add(item.path)
+    selectedPaths.value = [...set]
+    gridAnchorIndex.value = idx
+    return
+  }
+  selectedPaths.value = [item.path]
+  gridAnchorIndex.value = idx
+}
+
 const { ctx, options: ctxOptions, openAt: openContextMenu, onSelect: onCtxSelect, close: closeCtx } = useDriveContextMenu({
-  onSelectItem: (item) => (selectedPaths.value = [item.path]),
+  onSelectItem: (item) => {
+    selectedPaths.value = [item.path]
+    gridAnchorIndex.value = rows.value.findIndex((i) => i.path === item.path)
+  },
   onAction: async (key, item) => {
     if (key === 'preview') openPreview(item)
     if (key === 'download') await download(item)
@@ -453,7 +607,6 @@ const { clipboardCutPath: clipboardCut, cut: cutPath, pasteCut: pasteCutRaw } = 
 const {
   renameModal,
   renaming,
-  renameItem,
   renameValue,
   openRename,
   confirmRename: confirmRenameRaw,
@@ -503,6 +656,61 @@ async function confirmMkdir() {
     notifyError('创建失败', e?.response?.data?.error || e?.message || String(e))
   }
 }
+
+function parentDirPath(p: string): string {
+  const t = p.replace(/\\/g, '/').replace(/\/+$/, '')
+  const i = t.lastIndexOf('/')
+  return i <= 0 ? '' : t.slice(0, i)
+}
+
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!target || !(target instanceof HTMLElement)) return false
+  const tag = target.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
+  return target.isContentEditable
+}
+
+function onGlobalKeydown(e: KeyboardEvent) {
+  if (isTypingTarget(e.target)) return
+
+  if (e.key === 'Escape' && previewOpen.value) {
+    previewOpen.value = false
+    e.preventDefault()
+    return
+  }
+
+  if (e.key === 'Enter' && selectedItem.value) {
+    openOrEnter(selectedItem.value)
+    e.preventDefault()
+    return
+  }
+
+  if (e.key === 'Backspace' && !recursive.value) {
+    const p = (path.value || '').trim()
+    if (p) {
+      e.preventDefault()
+      goTo(parentDirPath(p))
+    }
+    return
+  }
+
+  if (e.key === 'Delete' && selectedPaths.value.length) {
+    e.preventDefault()
+    confirmBatchDelete()
+  }
+}
+
+watch(isNarrow, (narrow) => {
+  if (!narrow) detailsDrawerOpen.value = false
+})
+
+onMounted(() => {
+  window.addEventListener('keydown', onGlobalKeydown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', onGlobalKeydown)
+})
 </script>
 
 <style scoped>
@@ -511,19 +719,35 @@ async function confirmMkdir() {
   grid-template-columns: 180px 1fr;
   gap: 16px;
 }
+.layout--narrow {
+  grid-template-columns: 1fr;
+}
 .sidebar {
   position: sticky;
   top: 12px;
   align-self: start;
 }
+.category-mobile {
+  width: 100%;
+}
 .main {
   min-width: 0;
+}
+.main--drop {
+  outline: 2px dashed rgba(59, 130, 246, 0.45);
+  outline-offset: 2px;
+}
+.drop-hint {
+  margin-top: -4px;
 }
 .content {
   display: grid;
   grid-template-columns: 1fr 280px;
   gap: 12px;
   align-items: start;
+}
+.layout--narrow .content {
+  grid-template-columns: 1fr;
 }
 .table {
   min-width: 0;
@@ -538,7 +762,24 @@ async function confirmMkdir() {
   font-weight: 600;
 }
 .toolbar {
-  padding: 8px 0 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 0 2px;
+}
+.toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.toolbar-row--path .toolbar-field-grow,
+.toolbar-row--filters .toolbar-field-grow {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.toolbar-row--actions {
+  justify-content: space-between;
 }
 .hidden {
   display: none;
@@ -551,21 +792,12 @@ async function confirmMkdir() {
   cursor: pointer;
   text-decoration: underline;
 }
-.uploader {
-  margin-top: 6px;
+.list-loading {
+  padding: 32px 0;
+  display: flex;
+  justify-content: center;
 }
-.uploader-title {
-  font-weight: 600;
-  font-size: 13px;
-}
-.uploader-name {
-  max-width: 360px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.uploader-right {
-  width: 260px;
+.list-empty {
+  padding: 24px 0;
 }
 </style>
-

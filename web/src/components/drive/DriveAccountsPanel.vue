@@ -1,16 +1,6 @@
 <template>
   <div>
-    <div
-      class="toolbar mb-4 rounded-2xl border border-white/45 bg-white/50 px-3 py-2.5 shadow-sm shadow-slate-900/5 backdrop-blur-md"
-    >
-      <n-space justify="space-between" align="center">
-        <div class="title text-sm font-semibold tracking-tight text-slate-800">子账号</div>
-        <n-space>
-          <n-button secondary @click="refresh" :loading="loading">刷新</n-button>
-          <n-button type="primary" @click="openCreate">创建</n-button>
-        </n-space>
-      </n-space>
-    </div>
+    <drive-accounts-toolbar :loading="loading" @refresh="refresh" @create="openCreate" />
 
     <n-data-table
       :columns="columns"
@@ -146,6 +136,7 @@ import {
   NSwitch,
 } from 'naive-ui'
 import LocalPathInput from '../LocalPathInput.vue'
+import DriveAccountsToolbar from './DriveAccountsToolbar.vue'
 import api from '../../api/client'
 import { notifyError, notifySuccess } from '../../ui/notify'
 import { copyToClipboard } from '../../utils/clipboard'

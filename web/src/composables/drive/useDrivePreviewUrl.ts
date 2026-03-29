@@ -1,5 +1,5 @@
 import { computed, ref, watch } from 'vue'
-import api from '../../api/client'
+import { driveUserGetPreviewUrlCached } from '../../api/driveUserClient'
 
 export function useDrivePreviewUrl(opts: { open: () => boolean; path: () => string; kind: () => string }) {
   const loading = ref(false)
@@ -20,10 +20,7 @@ export function useDrivePreviewUrl(opts: { open: () => boolean; path: () => stri
   async function fetchPreviewUrl() {
     loading.value = true
     try {
-      const { data } = await api.get('/drive/preview-url', {
-        params: { path: opts.path() },
-        silentError: true,
-      } as any)
+      const data = await driveUserGetPreviewUrlCached({ path: opts.path() })
       previewUrl.value = String(data?.url || '')
       imgLoading.value = opts.kind() === 'image' && !!previewUrl.value
     } finally {

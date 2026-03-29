@@ -48,7 +48,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { NCard, NForm, NFormItem, NInput, NButton, NSpace } from 'naive-ui'

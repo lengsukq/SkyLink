@@ -73,7 +73,7 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { NCard, NForm, NFormItem, NInput, NButton, NSpace, NSwitch, NGrid, NGi } from 'naive-ui'
@@ -147,7 +147,7 @@ async function saveDefaults() {
   }
 }
 
-async function onToggleEasyTierAutostart(val) {
+async function onToggleEasyTierAutostart(val: boolean) {
   const previous = easytierAutostart.value
   easytierAutostart.value = val
   easytierAutostartSaving.value = true

@@ -1,7 +1,6 @@
 import type { DriveCategory, DriveOrder, DriveSort, PreviewKind } from '../types/drive'
 
 export const DRIVE_DEFAULT_LIST_LIMIT = 200
-export const DRIVE_GRID_THUMB_PREFETCH_WINDOW = 24
 export const DRIVE_UPLOAD_MAX_CONCURRENCY = 3
 
 export const DRIVE_CATEGORY_OPTIONS: Array<{ label: string; key: DriveCategory }> = [

@@ -41,7 +41,7 @@ async function login() {
   }
   loading.value = true
   try {
-    const { data } = await api.post('/drive/auth/login', { username, password }, { silentError: true } as any)
+    const { data } = await api.post('/drive/auth/login', { username, password }, { silentError: true })
     const token = String(data?.token || '')
     if (!token) {
       notifyError('登录失败', '未获取到 token')

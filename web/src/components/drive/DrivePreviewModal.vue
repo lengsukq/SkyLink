@@ -8,11 +8,32 @@
       <div v-if="!previewUrl" class="empty">无法生成预览链接</div>
 
       <div v-else class="preview">
-        <div v-if="kind === 'image'" class="img-wrap">
-          <div v-if="imgLoading" class="img-loading">
-            <n-spin size="large" />
+        <div v-if="kind === 'image'" class="img-block">
+          <div class="img-toolbar">
+            <n-space align="center" :size="8">
+              <n-button size="small" secondary :disabled="imgScale <= 0.25" @click="imgScale = Math.max(0.25, roundScale(imgScale - 0.25))">
+                缩小
+              </n-button>
+              <n-button size="small" secondary :disabled="imgScale >= 3" @click="imgScale = Math.min(3, roundScale(imgScale + 0.25))">
+                放大
+              </n-button>
+              <n-button size="small" quaternary @click="imgScale = 1">重置</n-button>
+              <span class="hint">{{ Math.round(imgScale * 100) }}%</span>
+            </n-space>
           </div>
-          <img :src="previewUrl" class="img" @load="imgLoading = false" @error="imgLoading = false" />
+          <div class="img-zoom-wrap">
+            <div v-if="imgLoading" class="img-loading">
+              <n-spin size="large" />
+            </div>
+            <img
+              :src="previewUrl"
+              class="img"
+              :style="{ transform: `scale(${imgScale})` }"
+              alt=""
+              @load="imgLoading = false"
+              @error="imgLoading = false"
+            />
+          </div>
         </div>
 
         <div v-else-if="kind === 'video'" class="video-wrap">
@@ -34,9 +55,20 @@
     </template>
 
     <template #footer>
-      <n-space justify="end">
-        <n-button secondary @click="onDownload" :disabled="!canDownload">下载</n-button>
-        <n-button type="primary" @click="show = false">关闭</n-button>
+      <n-space justify="space-between" style="width: 100%">
+        <n-space v-if="previewNavTotal > 1" align="center" :size="8">
+          <n-button size="small" secondary :disabled="previewNavIndex <= 0" @click="emit('nav-prev')">上一项</n-button>
+          <span class="hint">{{ previewNavIndex + 1 }} / {{ previewNavTotal }}</span>
+          <n-button size="small" secondary :disabled="previewNavIndex >= previewNavTotal - 1" @click="emit('nav-next')">
+            下一项
+          </n-button>
+        </n-space>
+        <span v-else />
+
+        <n-space align="center" :size="8">
+          <n-button secondary @click="onDownload" :disabled="!canDownload">下载</n-button>
+          <n-button type="primary" @click="show = false">关闭</n-button>
+        </n-space>
       </n-space>
     </template>
   </n-modal>
@@ -49,15 +81,27 @@ import { DRIVE_VIDEO_RATE_OPTIONS } from '../../constants/drive'
 import type { PreviewKind } from '../../types/drive'
 import { useDrivePreviewUrl } from '../../composables/drive/useDrivePreviewUrl'
 
-const props = defineProps<{
-  modelValue: boolean
-  path: string
-  name: string
-  kind: PreviewKind
-  sizeBytes?: number
-}>()
+const props = withDefaults(
+  defineProps<{
+    modelValue: boolean
+    path: string
+    name: string
+    kind: PreviewKind
+    sizeBytes?: number
+    previewNavTotal?: number
+    previewNavIndex?: number
+  }>(),
+  {
+    previewNavTotal: 0,
+    previewNavIndex: 0,
+  },
+)
 
-const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void }>()
+const emit = defineEmits<{
+  (e: 'update:modelValue', v: boolean): void
+  (e: 'nav-prev'): void
+  (e: 'nav-next'): void
+}>()
 
 const show = computed({
   get: () => props.modelValue,
@@ -66,11 +110,34 @@ const show = computed({
 
 const title = computed(() => `预览：${props.name}`)
 
+const previewNavTotal = computed(() => props.previewNavTotal ?? 0)
+const previewNavIndex = computed(() => props.previewNavIndex ?? 0)
+
 const { loading, previewUrl, imgLoading, canDownload } = useDrivePreviewUrl({
   open: () => props.modelValue,
   path: () => props.path,
   kind: () => props.kind,
 })
+
+const imgScale = ref(1)
+
+watch(
+  () => props.path,
+  () => {
+    imgScale.value = 1
+  },
+)
+
+watch(
+  () => props.kind,
+  () => {
+    imgScale.value = 1
+  },
+)
+
+function roundScale(n: number) {
+  return Math.round(n * 100) / 100
+}
 
 const videoEl = ref<HTMLVideoElement | null>(null)
 const playbackRate = ref<number>(1)
@@ -86,7 +153,6 @@ watch(
 function onDownload() {
   const u = new URL('/api/drive/download', window.location.origin)
   u.searchParams.set('path', props.path || '')
-  // download endpoint requires Authorization header; we fallback to opening preview url in new tab if present.
   if (previewUrl.value) {
     window.open(previewUrl.value, '_blank', 'noopener,noreferrer')
   } else {
@@ -109,8 +175,21 @@ function onDownload() {
   opacity: 0.8;
   font-size: 12px;
 }
-.img-wrap {
+.img-block {
+  width: 100%;
+}
+.img-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+.img-zoom-wrap {
   position: relative;
+  max-height: 72vh;
+  overflow: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
 }
 .img-loading {
   position: absolute;
@@ -118,12 +197,15 @@ function onDownload() {
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 1;
+  pointer-events: none;
 }
 .img {
   max-width: 100%;
-  max-height: 72vh;
   display: block;
   margin: 0 auto;
+  transform-origin: center top;
+  transition: transform 0.12s ease-out;
 }
 .video-wrap {
   width: 100%;
@@ -150,4 +232,3 @@ function onDownload() {
   opacity: 0.8;
 }
 </style>
-

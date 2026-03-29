@@ -60,14 +60,25 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { NCard, NGrid, NGi, NStatistic, NSpace, NButton, NH1, NTag, NAlert } from 'naive-ui'
 import api from '../api/client'
 import StorageVolumesPanel from '../components/StorageVolumesPanel.vue'
 import { ROUTE_PATHS } from '../constants/routes'
 
-const stats = ref({
+type DashboardStats = {
+  mappings_count: number
+  ddns_count: number
+  cf_accounts_count: number
+  easytier_enabled: boolean
+  easytier_daemon_running: boolean
+  easytier_running_count: number
+  easytier_has_runtime: boolean
+  is_windows: boolean
+}
+
+const stats = ref<DashboardStats>({
   mappings_count: 0,
   ddns_count: 0,
   cf_accounts_count: 0,
@@ -82,7 +93,7 @@ const loadError = ref('')
 onMounted(async () => {
   try {
     const { data } = await api.get('/stats', { silentError: true })
-    stats.value = data
+    stats.value = data as DashboardStats
     loadError.value = ''
   } catch (_) {
     loadError.value = '统计信息加载失败，请稍后重试。'

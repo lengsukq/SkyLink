@@ -18,17 +18,11 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { NH1 } from 'naive-ui'
 
-defineProps({
-  title: {
-    type: String,
-    required: true,
-  },
-  description: {
-    type: String,
-    default: '',
-  },
-})
+defineProps<{
+  title: string
+  description?: string
+}>()
 </script>

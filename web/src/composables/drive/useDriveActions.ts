@@ -2,6 +2,7 @@ import { computed, ref } from 'vue'
 import type { DriveEntry, PreviewKind } from '../../types/drive'
 import { driveUserDelete, driveUserDownloadBlob } from '../../api/driveUserClient'
 import { copyToClipboard } from '../../utils/clipboard'
+import { previewKindForEntry } from '../../utils/drivePreview'
 
 export function useDriveActions(opts: {
   refresh: (reset: boolean) => Promise<void>
@@ -14,11 +15,7 @@ export function useDriveActions(opts: {
   const previewKind = computed<PreviewKind>(() => {
     const r = previewItem.value
     if (!r) return 'unknown'
-    if (r.type === 'image') return 'image'
-    if (r.type === 'video') return 'video'
-    if (r.type === 'audio') return 'audio'
-    if (r.ext?.toLowerCase?.() === 'pdf') return 'pdf'
-    return 'unknown'
+    return previewKindForEntry(r)
   })
 
   function openPreview(row: DriveEntry) {
