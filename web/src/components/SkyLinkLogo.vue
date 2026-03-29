@@ -71,14 +71,14 @@ const wordmarkClass = computed(() => {
 
 <style scoped>
 .skylink-logo__accent {
-  background: linear-gradient(120deg, #0ea5e9 0%, #6366f1 45%, #8b5cf6 100%);
+  background: linear-gradient(120deg, #38bdf8 0%, #0284c7 55%, #0369a1 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
 
 .skylink-logo[data-size='lg'] .skylink-logo__accent {
-  background: linear-gradient(120deg, #38bdf8 0%, #818cf8 45%, #a855f7 90%);
+  background: linear-gradient(120deg, #7dd3fc 0%, #0ea5e9 40%, #0284c7 85%);
   -webkit-background-clip: text;
   background-clip: text;
 }

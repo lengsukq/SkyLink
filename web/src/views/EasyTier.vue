@@ -432,7 +432,7 @@ const {
 }
 .easytier-version-hint {
   font-size: 12px;
-  color: #666;
+  color: #64748b;
 }
 .easytier-version-hint a {
   margin-left: 8px;
@@ -440,7 +440,7 @@ const {
 .status-version,
 .status-self {
   font-size: 13px;
-  color: #666;
+  color: #64748b;
 }
 .status-self {
   margin-left: 12px;
@@ -451,7 +451,7 @@ const {
 }
 .status-hint {
   font-size: 13px;
-  color: #666;
+  color: #64748b;
 }
 .status-hint code {
   font-family: var(--n-font-mono, monospace);
@@ -463,18 +463,18 @@ const {
 .status-updated {
   margin-left: 12px;
   font-size: 12px;
-  color: #999;
+  color: #94a3b8;
 }
 .runtime-hint {
   display: block;
   margin-top: 4px;
   font-size: 12px;
-  color: #666;
+  color: #64748b;
 }
 .field-label {
   width: 120px;
   font-size: 13px;
-  color: #666;
+  color: #64748b;
 }
 .daemon-logs {
   margin: 0;

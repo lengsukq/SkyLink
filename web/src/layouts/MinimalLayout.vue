@@ -1,6 +1,6 @@
 <template>
   <n-layout
-    class="app-layout min-h-screen bg-transparent bg-gradient-to-b from-slate-100 via-sky-50/40 to-slate-100"
+    class="app-layout min-h-screen bg-transparent bg-gradient-to-b from-slate-100 via-sky-50 via-sky-100/50 to-slate-100"
   >
     <n-layout-content class="app-content app-content--login !p-0">
       <div class="app-content__inner">

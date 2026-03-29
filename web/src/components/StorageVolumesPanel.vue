@@ -69,10 +69,10 @@ onMounted(async () => {
 }
 .storage-vol__label {
   font-size: 12px;
-  color: #666;
+  color: #64748b;
 }
 .storage-vol__meta {
   font-size: 12px;
-  color: #666;
+  color: #64748b;
 }
 </style>

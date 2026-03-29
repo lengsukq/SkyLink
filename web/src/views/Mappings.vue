@@ -88,7 +88,7 @@
         <n-form-item label="CNAME 目标">
           <n-input v-model:value="oneClickForm.cname_target" placeholder="可留空，使用设置页默认 FRP 域名" />
           <template #feedback>
-            <span style="font-size: 12px; color: #666">
+            <span class="text-xs text-slate-500">
               <template v-if="frpCnameTarget">
                 <template v-if="!oneClickForm.cname_target?.trim()">
                   未填写时将使用设置页中的默认 FRP 固定域名：{{ frpCnameTarget }}。

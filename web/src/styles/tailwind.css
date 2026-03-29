@@ -6,6 +6,13 @@
   --radius-ios-lg: 1.25rem;
   --radius-ios-xl: 1.5rem;
   --radius-ios-2xl: 1.75rem;
+
+  /* SkyLink 品牌天蓝（对齐 Tailwind sky 刻度） */
+  --color-skylink-brand: #0284c7;
+  --color-skylink-brand-hover: #0ea5e9;
+  --color-skylink-brand-pressed: #0369a1;
+  --color-skylink-brand-muted: #e0f2fe;
+  --color-skylink-bg-subtle: #f0f9ff;
 }
 
 @layer base {
@@ -13,5 +20,6 @@
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    background-color: var(--color-skylink-bg-subtle);
   }
 }

@@ -25,6 +25,13 @@ const themeOverrides = {
     boxShadow1: '0 1px 2px 0 rgba(15, 23, 42, 0.05)',
     boxShadow2: '0 8px 24px -6px rgba(15, 23, 42, 0.08)',
     boxShadow3: '0 20px 48px -12px rgba(15, 23, 42, 0.12)',
+    primaryColor: '#0284c7',
+    primaryColorHover: '#0ea5e9',
+    primaryColorPressed: '#0369a1',
+    primaryColorSuppl: '#0ea5e9',
+    infoColor: '#0284c7',
+    infoColorHover: '#0ea5e9',
+    infoColorPressed: '#0369a1',
   },
   Card: {
     borderRadius: '16px',

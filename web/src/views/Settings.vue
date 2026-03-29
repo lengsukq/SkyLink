@@ -171,7 +171,7 @@ onMounted(async () => {
 
 <style>
 .settings-hint {
-  color: #666;
+  color: #64748b;
   font-size: 11px;
   margin-top: 4px;
   line-height: 1.5;

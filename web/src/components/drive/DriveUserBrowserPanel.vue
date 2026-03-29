@@ -2,13 +2,13 @@
   <div class="layout" :class="{ 'layout--narrow': isNarrow }">
     <div
       v-show="!isNarrow"
-      class="sidebar sidebar-desktop rounded-2xl border border-white/50 bg-white/55 p-2 shadow-sm shadow-slate-900/5 backdrop-blur-xl"
+      class="sidebar sidebar-desktop rounded-2xl border border-sky-100/80 bg-white/55 p-2 shadow-sm shadow-slate-900/5 backdrop-blur-xl"
     >
       <n-menu :value="activeCategory" :options="categoryOptions" @update:value="onCategory" />
     </div>
 
     <div
-      class="main rounded-2xl border border-white/35 bg-white/45 p-4 shadow-sm shadow-slate-900/5 backdrop-blur-md md:p-5"
+      class="main rounded-2xl border border-sky-100/70 bg-white/45 p-4 shadow-sm shadow-slate-900/5 backdrop-blur-md md:p-5"
       :class="{ 'main--drop': dragOver }"
       @dragenter.prevent="onDragEnter"
       @dragleave.prevent="onDragLeave"

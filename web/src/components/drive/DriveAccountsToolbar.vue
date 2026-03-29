@@ -1,6 +1,6 @@
 <template>
   <div
-    class="toolbar mb-4 rounded-2xl border border-white/45 bg-white/50 px-3 py-2.5 shadow-sm shadow-slate-900/5 backdrop-blur-md"
+    class="toolbar mb-4 rounded-2xl border border-sky-100/80 bg-white/50 px-3 py-2.5 shadow-sm shadow-slate-900/5 backdrop-blur-md"
   >
     <n-space justify="space-between" align="center">
       <div class="title text-sm font-semibold tracking-tight text-slate-800">子账号</div>
