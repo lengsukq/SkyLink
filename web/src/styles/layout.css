@@ -114,3 +114,102 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
+
+/* Login.vue + DriveLogin.vue 双栏布局 */
+.login-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 16px;
+}
+
+.login-page__content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 56px;
+  width: 100%;
+  max-width: 1040px;
+}
+
+.login-page__brand {
+  flex: 1.2;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 16px;
+  max-width: 520px;
+}
+
+.login-page__brand-subtitle {
+  font-size: 16px;
+  line-height: 1.7;
+  color: #475569;
+  max-width: 420px;
+}
+
+.login-page__card-wrap {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+
+.login-page__card {
+  width: 100%;
+  max-width: 420px;
+}
+
+.login-page__hint {
+  color: #94a3b8;
+  font-size: 12px;
+  margin-top: 16px;
+  line-height: 1.7;
+}
+
+.login-page__footer-link {
+  margin-top: 12px;
+  text-align: center;
+  font-size: 13px;
+}
+
+.login-page__footer-link a {
+  color: #0369a1;
+  text-decoration: none;
+}
+
+.login-page__footer-link a:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 960px) {
+  .login-page__content {
+    gap: 32px;
+  }
+}
+
+@media (max-width: 768px) {
+  .login-page {
+    padding: 24px 16px;
+  }
+
+  .login-page__content {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 32px;
+  }
+
+  .login-page__brand {
+    align-items: center;
+  }
+
+  .login-page__brand-subtitle {
+    max-width: 100%;
+  }
+
+  .login-page__card {
+    max-width: 100%;
+  }
+}

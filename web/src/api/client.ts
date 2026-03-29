@@ -31,6 +31,11 @@ function isDriveAuthLoginPath(p: string): boolean {
   return p === '/drive/auth/login'
 }
 
+/** 正在提交登录表单时的 401（密码错误等），不应清 token、不应跳转登录页 */
+function isAdminAuthLoginPath(p: string): boolean {
+  return p === '/auth/login' || p === '/auth/password'
+}
+
 function isDriveAccountsAdminPath(p: string): boolean {
   return p.startsWith('/drive/accounts')
 }
@@ -99,6 +104,10 @@ client.interceptors.response.use(
 
     if (e.response?.status === 401) {
       const path = apiRequestPath(e.config || {})
+
+      if (isDriveAuthLoginPath(path) || isAdminAuthLoginPath(path)) {
+        return Promise.reject(e)
+      }
 
       if (isDriveUserAPIPath(path)) {
         localStorage.removeItem(STORAGE_KEYS.driveUserToken)
