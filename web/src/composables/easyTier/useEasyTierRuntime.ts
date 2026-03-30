@@ -2,16 +2,14 @@ import { computed, h, reactive, ref, type Ref } from 'vue'
 import { NButton, type DataTableColumns, type SelectOption } from 'naive-ui'
 import api from '../../api/client'
 import { notifyError, notifySuccess } from '../../ui/notify'
+import { fetchEasyTierPlatform, fetchEasyTierPlatforms, fetchEasyTierReleases } from './useEasyTierRuntimeCatalog'
+import { installEasyTierRuntime, removeEasyTierRuntime, removeInstalledRuntime } from './useEasyTierRuntimeInstaller'
 import type {
   EasyTierFormState,
   RuntimeInstalledItem,
   RuntimePlatformItem,
   RuntimeReleaseItem,
-  EasyTierPlatformResponse,
-  EasyTierPlatformsResponse,
-  EasyTierReleasesResponse,
   EasyTierRuntimeInstalledResponse,
-  EasyTierRuntimeInstallResponse,
   EasyTierRuntimeListResponse,
 } from './types'
 
@@ -108,11 +106,11 @@ export function useEasyTierRuntime(options: UseEasyTierRuntimeOptions) {
 
   async function loadPlatform() {
     try {
-      const { data } = await api.get<EasyTierPlatformResponse>('/easytier/platform')
-      platform.os = data?.os || ''
-      platform.arch = data?.arch || ''
-      platform.label = data?.label || ''
-      options.easytierHostSupported.value = data?.easytier_host_supported === true
+      const data = await fetchEasyTierPlatform()
+      platform.os = data.os
+      platform.arch = data.arch
+      platform.label = data.label
+      options.easytierHostSupported.value = data.easytierHostSupported
       platformError.value = ''
     } catch (_) {
       platform.os = ''
@@ -126,8 +124,7 @@ export function useEasyTierRuntime(options: UseEasyTierRuntimeOptions) {
   async function loadReleases() {
     releasesError.value = ''
     try {
-      const { data } = await api.get<EasyTierReleasesResponse>('/easytier/releases')
-      const list: RuntimeReleaseItem[] = data?.releases || []
+      const list = await fetchEasyTierReleases()
       releasesList.value = list
       releaseOptions.value = list.map((r) => ({ label: r.tag_name, value: r.tag_name }))
     } catch (_) {
@@ -139,14 +136,13 @@ export function useEasyTierRuntime(options: UseEasyTierRuntimeOptions) {
 
   async function loadPlatforms() {
     try {
-      const { data } = await api.get<EasyTierPlatformsResponse>('/easytier/platforms')
-      const list: RuntimePlatformItem[] = data?.platforms || []
-      platformsList.value = list
-      currentPlatformLabel.value = data?.current?.label || ''
-      if (data?.easytier_host_supported === true || data?.easytier_host_supported === false) {
-        options.easytierHostSupported.value = data.easytier_host_supported === true
+      const data = await fetchEasyTierPlatforms()
+      platformsList.value = data.list
+      currentPlatformLabel.value = data.currentLabel
+      if (data.easytierHostSupported === true || data.easytierHostSupported === false) {
+        options.easytierHostSupported.value = data.easytierHostSupported === true
       }
-      platformOptions.value = list.map((p) => ({
+      platformOptions.value = data.list.map((p) => ({
         label: p.label || `${p.os}/${p.arch}`,
         value: `${p.os}/${p.arch}`,
       }))
@@ -193,9 +189,7 @@ export function useEasyTierRuntime(options: UseEasyTierRuntimeOptions) {
     const key = installedItemKey(row)
     removingInstalledKey.value = key
     try {
-      await api.delete('/easytier/runtime', {
-        data: { version: row.version, os: row.os, arch: row.arch },
-      })
+      await removeInstalledRuntime(row)
       notifySuccess('已移除', `${row.version} (${row.os}/${row.arch}) 已从本机删除。`)
       await loadInstalledList()
       await loadRuntimeInstalled()
@@ -232,11 +226,11 @@ export function useEasyTierRuntime(options: UseEasyTierRuntimeOptions) {
     runtimeInstalling.value = true
     runtimeError.value = ''
     try {
-      const { data } = await api.post<EasyTierRuntimeInstallResponse>('/easytier/runtime/install', {
-        version: version === 'latest' ? (releasesList.value[0]?.tag_name || 'latest') : version,
-        os: osVal,
-        arch,
-      })
+      const data = await installEasyTierRuntime(
+        version === 'latest' ? (releasesList.value[0]?.tag_name || 'latest') : version,
+        osVal,
+        arch
+      )
       if (data?.installed) {
         runtimeVersion.value = data.version || version
         notifySuccess('运行时已准备就绪', `已为 ${selectedPlatformKey.value} 安装 EasyTier ${data.version || version}。`)
@@ -263,9 +257,7 @@ export function useEasyTierRuntime(options: UseEasyTierRuntimeOptions) {
     runtimeRemoving.value = true
     runtimeError.value = ''
     try {
-      await api.delete('/easytier/runtime', {
-        data: { version, os: osVal, arch },
-      })
+      await removeEasyTierRuntime(version, osVal, arch)
       notifySuccess('已移除', `已移除 ${selectedPlatformKey.value} 的 EasyTier ${version} 运行时。`)
       await loadRuntimeInstalled()
       await loadInstalledList()

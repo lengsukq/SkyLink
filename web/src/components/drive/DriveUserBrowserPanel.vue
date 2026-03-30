@@ -240,8 +240,9 @@ import { useDriveUploadQueue } from '../../composables/drive/useDriveUploadQueue
 import { useDriveIndexSync } from '../../composables/drive/useDriveIndexSync'
 import { useDriveDropZone } from '../../composables/drive/useDriveDropZone'
 import { useDriveHotkeys } from '../../composables/drive/useDriveHotkeys'
+import { useDrivePreviewNav } from '../../composables/drive/useDrivePreviewNav'
+import { useDriveBatchDelete } from '../../composables/drive/useDriveBatchDelete'
 import { useMatchMedia } from '../../composables/useMatchMedia'
-import { isEntryPreviewable } from '../../utils/drivePreview'
 import { getApiErrorMessage } from '../../utils/apiError'
 import DrivePreviewModal from './DrivePreviewModal.vue'
 import DriveDetailsSidebar from './fm/DriveDetailsSidebar.vue'
@@ -412,29 +413,7 @@ const {
   notifyError,
 })
 
-const previewableRows = computed(() => rows.value.filter((r) => isEntryPreviewable(r)))
-
-const previewNavMeta = computed(() => {
-  const list = previewableRows.value
-  const p = previewItem.value?.path
-  if (!p || !list.length) return { total: 0, index: 0 }
-  const idx = list.findIndex((r) => r.path === p)
-  return { total: list.length, index: idx >= 0 ? idx : 0 }
-})
-
-function previewNavPrev() {
-  const list = previewableRows.value
-  const i = list.findIndex((r) => r.path === previewItem.value?.path)
-  if (i <= 0) return
-  openPreview(list[i - 1])
-}
-
-function previewNavNext() {
-  const list = previewableRows.value
-  const i = list.findIndex((r) => r.path === previewItem.value?.path)
-  if (i < 0 || i >= list.length - 1) return
-  openPreview(list[i + 1])
-}
+const { previewNavMeta, previewNavPrev, previewNavNext } = useDrivePreviewNav(rows, previewItem, openPreview)
 
 function pickUpload() {
   if (!fileInput.value) return
@@ -458,26 +437,10 @@ function onChecked(keys: any) {
   selectedPaths.value = (keys || []) as string[]
 }
 
-const batchDeleteModal = ref(false)
-const batchDeleting = ref(false)
-const pendingDeleteCount = ref(0)
-
-function confirmBatchDelete() {
-  const n = selectedPaths.value.length
-  if (!n) return
-  pendingDeleteCount.value = n
-  batchDeleteModal.value = true
-}
-
-async function runBatchDelete() {
-  batchDeleting.value = true
-  try {
-    await batchDeleteRaw(selectedPaths.value)
-    batchDeleteModal.value = false
-  } finally {
-    batchDeleting.value = false
-  }
-}
+const { batchDeleteModal, batchDeleting, pendingDeleteCount, confirmBatchDelete, runBatchDelete } = useDriveBatchDelete(
+  selectedPaths,
+  batchDeleteRaw
+)
 
 const { queue, enqueueFiles } = useDriveUploadQueue({
   getTargetDir: () => path.value,
