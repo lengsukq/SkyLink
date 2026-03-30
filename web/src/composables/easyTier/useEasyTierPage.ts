@@ -1,7 +1,7 @@
 /**
  * EasyTier 状态与操作（由 Windows 工具页中的 EasyTierPanel 使用）。
  */
-import { ref, reactive, onMounted, h, computed } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, h, computed } from 'vue'
 import { NButton, NTag } from 'naive-ui'
 import api from '../../api/client'
 import { notifySuccess, notifyError } from '../../ui/notify'
@@ -85,9 +85,12 @@ const cliRawStdout = ref('')
 const cliRawStderr = ref('')
 const cliRawMetaError = ref('')
 const cliRawLoading = ref(false)
+const peerResidentRows = ref<any[]>([])
 const profiles = ref<any[]>([])
 const activeProfileId = ref('')
 const newProfileName = ref('')
+let statusPollTimer: ReturnType<typeof setInterval> | null = null
+let statusPollInFlight = false
 const parsedCliPeerRows = computed(() => {
   if (cliRawTarget.value !== 'peer') return []
   if (!cliRawStdout.value) return []
@@ -97,6 +100,26 @@ const cliPeerSummary = computed(() => getCliPeerSummary(parsedCliPeerRows.value)
 
 const profileOptions = computed(() => profiles.value.map((p) => ({ label: p.name || p.id, value: p.id })))
 const canDeleteProfile = computed(() => profiles.value.length > 1 && !!activeProfileId.value)
+const parsedPeers = computed(() =>
+  form.peers
+    .split(/[\n,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+)
+const peerCount = computed(() => parsedPeers.value.length)
+const hasNodeConfig = computed(() => {
+  if (networkMode.value === 'standalone') return true
+  return parsedPeers.value.length > 0
+})
+const shouldPromptNodeConfig = computed(() => easytierHostSupported.value && !hasNodeConfig.value)
+const runtimeOpsDisabledReason = computed(() => {
+  if (!easytierHostSupported.value) return '仅在 Windows 上可用'
+  if (!daemonModeEnabled.value) return '需在配置中开启 easytier.daemon_enabled 并重启 SkyLink'
+  if (!hasNodeConfig.value) return '请先配置节点信息'
+  if (!form.enabled) return '请先在配置中开启“启用”并保存'
+  return ''
+})
+const runtimeOpsDisabled = computed(() => runtimeOpsDisabledReason.value !== '')
 
 const aggregatedErrors = computed(() => {
   const list: string[] = []
@@ -158,6 +181,35 @@ const displayNodes = computed(() => {
   })
   return list
 })
+const peerResidentColumns = [
+  { title: '虚拟IPv4地址', key: 'ipv4', width: 140, ellipsis: true },
+  { title: '节点', key: 'hostname', ellipsis: true },
+  {
+    title: '链路',
+    key: 'cost',
+    width: 95,
+    render: (row: any) =>
+      h(
+        NTag,
+        { size: 'small', type: row.cost?.toLowerCase?.().includes('relay') ? 'warning' : 'success', bordered: false },
+        { default: () => row.cost || '—' }
+      ),
+  },
+  {
+    title: '延迟',
+    key: 'latencyText',
+    width: 90,
+    render: (row: any) =>
+      row.latencyMs == null
+        ? '—'
+        : h(NTag, { size: 'small', type: row.latencyMs > 300 ? 'warning' : 'info', bordered: false }, { default: () => `${row.latencyMs.toFixed(2)} ms` }),
+  },
+  { title: '丢包', key: 'loss', width: 80 },
+  { title: '流量(RX/TX)', key: 'traffic', width: 150, render: (row: any) => `${row.rx || '-'} / ${row.tx || '-'}` },
+  { title: 'Tunnel', key: 'tunnel', width: 90, ellipsis: true },
+  { title: 'NAT', key: 'nat', width: 140, ellipsis: true },
+  { title: '版本', key: 'version', width: 140, ellipsis: true },
+]
 
 const nodeTableColumns = [
   { title: '虚拟IPv4地址', key: 'ipv4', width: 140, ellipsis: true },
@@ -481,7 +533,7 @@ async function save() {
     if (!form.network_secret.trim()) {
       errors.push('请填写网络密钥（ET_NETWORK_SECRET，对应 EasyTier network_identity.secret）。')
     }
-    if (networkMode.value !== 'standalone' && !form.peers.trim()) {
+    if (networkMode.value !== 'standalone' && parsedPeers.value.length === 0) {
       errors.push('请至少填写一个初始节点（ET_PEERS，对应 peers[].uri）。')
     }
   }
@@ -499,7 +551,7 @@ async function save() {
   }
   if (errors.length) {
     notifyError('配置不完整或格式错误', errors.join('；'))
-    return
+    return false
   }
   if (networkMode.value === 'standalone') {
     form.peers = ''
@@ -508,12 +560,33 @@ async function save() {
   }
   saving.value = true
   try {
-    const { data } = await api.put('/easytier/config', form)
+    await api.put('/easytier/config', form)
     notifySuccess('已保存', '若需使网络/高级配置生效，请点击上方状态卡片中的「重启」。')
     await loadConfig()
+    return true
+  } catch (e) {
+    const msg = e?.response?.data?.error || e?.message || '保存失败'
+    notifyError('保存失败', msg)
+    return false
   } finally {
     saving.value = false
   }
+}
+
+async function saveByModal() {
+  const ok = await save()
+  if (ok) {
+    await loadStatus()
+  }
+  return ok
+}
+
+async function saveAndRestartByModal() {
+  const ok = await saveAndRestart()
+  if (ok) {
+    await loadStatus()
+  }
+  return ok
 }
 
 async function saveAndRestart() {
@@ -521,7 +594,7 @@ async function saveAndRestart() {
   if (form.enabled) {
     if (!form.network_name.trim()) errors.push('请填写网络名。')
     if (!form.network_secret.trim()) errors.push('请填写网络密钥。')
-    if (networkMode.value !== 'standalone' && !form.peers.trim()) errors.push('请至少填写一个初始节点。')
+    if (networkMode.value !== 'standalone' && parsedPeers.value.length === 0) errors.push('请至少填写一个初始节点。')
   }
   validateIpv4ForSave(errors)
   const cidrPattern = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}\/([0-9]|[12][0-9]|3[0-2])$/
@@ -532,7 +605,7 @@ async function saveAndRestart() {
   }
   if (errors.length) {
     notifyError('配置不完整或格式错误', errors.join('；'))
-    return
+    return false
   }
   if (networkMode.value === 'standalone') form.peers = ''
   else if (networkMode.value === 'public') form.peers = (publicServer.value || '').trim()
@@ -546,16 +619,19 @@ async function saveAndRestart() {
       notifySuccess('已保存并重启', data?.message || '配置已保存，EasyTier 守护进程已重启。')
       await loadDaemonStatus()
       await loadStatus()
+      return true
     } catch (e) {
       const err = e?.response?.data
       const msg = err?.error || e?.message || '重启失败'
       const hint = err?.hint || ''
       notifyError('配置已保存，但重启失败', hint ? `${msg} ${hint}` : msg)
       await loadDaemonStatus()
+      return false
     }
   } catch (e) {
     const msg = e?.response?.data?.error || e?.message || '保存失败'
     notifyError('保存失败', msg)
+    return false
   } finally {
     saving.value = false
   }
@@ -584,6 +660,40 @@ async function loadStatus() {
   } finally {
     statusLoading.value = false
   }
+}
+
+async function loadPeerResidentOnly() {
+  try {
+    const { data } = await api.get(profilePath('/cli-output'), {
+      params: { target: 'peer' },
+      silentError: true,
+    } as any)
+    const stdout = typeof data?.stdout === 'string' ? data.stdout : ''
+    peerResidentRows.value = parseCliPeerTable(stdout)
+  } catch (_) {
+    peerResidentRows.value = []
+  }
+}
+
+function startStatusPolling() {
+  stopStatusPolling()
+  statusPollTimer = setInterval(async () => {
+    if (statusPollInFlight) return
+    if (!easytierHostSupported.value) return
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
+    statusPollInFlight = true
+    try {
+      await loadPeerResidentOnly()
+    } finally {
+      statusPollInFlight = false
+    }
+  }, 1000)
+}
+
+function stopStatusPolling() {
+  if (!statusPollTimer) return
+  clearInterval(statusPollTimer)
+  statusPollTimer = null
 }
 
 async function loadDaemonStatus() {
@@ -842,6 +952,11 @@ onMounted(async () => {
   }
   await loadRuntimeInstalled()
   await loadInstalledList()
+  await loadPeerResidentOnly()
+  startStatusPolling()
+})
+onUnmounted(() => {
+  stopStatusPolling()
 })
   return {
     formRef,
@@ -895,10 +1010,18 @@ onMounted(async () => {
     newProfileName,
     profileOptions,
     canDeleteProfile,
+    parsedPeers,
+    peerCount,
+    hasNodeConfig,
+    shouldPromptNodeConfig,
+    runtimeOpsDisabled,
+    runtimeOpsDisabledReason,
     aggregatedErrors,
     installedOptionsForStatus,
     selectedInstalledKey,
     displayNodes,
+    peerResidentRows,
+    peerResidentColumns,
     nodeTableColumns,
     routeColumns,
     installedListColumns,
@@ -917,6 +1040,8 @@ onMounted(async () => {
     onVersionOrPlatformChange,
     save,
     saveAndRestart,
+    saveByModal,
+    saveAndRestartByModal,
     loadStatus,
     loadDaemonStatus,
     loadDaemonLogs,

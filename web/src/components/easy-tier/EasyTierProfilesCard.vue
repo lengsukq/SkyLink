@@ -11,6 +11,7 @@
       <n-input v-model:value="newProfileName" placeholder="新实例名称" class="w-[180px]" />
       <n-button size="small" @click="emit('create')">新增实例</n-button>
       <n-button size="small" :disabled="!canDelete" @click="emit('delete')">删除当前实例</n-button>
+      <n-button size="small" tertiary @click="emit('openRuntime')">版本与运行时</n-button>
     </n-space>
   </n-card>
 </template>
@@ -30,6 +31,7 @@ const emit = defineEmits<{
   profileChange: [id: string]
   create: []
   delete: []
+  openRuntime: []
 }>()
 
 function onProfileChange(id: string) {
