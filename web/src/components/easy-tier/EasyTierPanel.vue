@@ -102,8 +102,8 @@
         </n-space>
         <n-divider v-if="daemonModeEnabled" style="margin: 12px 0 8px 0">守护进程日志</n-divider>
         <p v-if="daemonModeEnabled && easytierHostSupported" class="status-hint" style="margin: 0 0 8px 0">
-          默认在弹出的独立控制台中查看 easytier 节点界面；此处仅在有日志时显示。若需把输出同步到本页，请设置环境变量
-          <code>SKYLINK_EASYTIER_DAEMON_CAPTURE_OUTPUT=1</code> 并重启 SkyLink。
+          默认后台运行且不弹出控制台；日志会显示在此处。若需弹出独立控制台调试，请设置环境变量
+          <code>SKYLINK_EASYTIER_DAEMON_CAPTURE_OUTPUT=0</code> 并重启 SkyLink。
         </p>
         <n-space v-if="daemonModeEnabled" vertical size="small">
           <n-button size="tiny" :disabled="!easytierHostSupported" :loading="daemonLogsLoading" @click="loadDaemonLogs">刷新</n-button>
@@ -519,8 +519,9 @@ const {
   font-family: var(--n-font-mono, monospace);
   font-size: 12px;
   padding: 0 4px;
-  background: var(--n-color-target, #f0f0f0);
+  background: #f8fafc;
   border-radius: 3px;
+  border: 1px solid #e2e8f0;
 }
 .status-updated {
   margin-left: 12px;
@@ -540,7 +541,8 @@ const {
   overflow: auto;
   font-size: 12px;
   line-height: 1.4;
-  background: var(--n-color-target, #f5f5f5);
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
   border-radius: 6px;
   white-space: pre-wrap;
   word-break: break-all;
@@ -557,13 +559,15 @@ const {
   overflow: auto;
   font-size: 12px;
   line-height: 1.4;
-  background: var(--n-color-target, #f5f5f5);
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
   border-radius: 6px;
   white-space: pre-wrap;
   word-break: break-all;
 }
 .cli-raw-err {
-  background: rgba(239, 68, 68, 0.08);
+  background: #fff1f2;
+  border-color: #fecdd3;
 }
 .peer-modern-view {
   margin-top: 12px;
@@ -577,8 +581,8 @@ const {
 .peer-stat-card {
   padding: 10px 12px;
   border-radius: 10px;
-  background: var(--n-color-target, #f8fafc);
-  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
 }
 .peer-stat-label {
   font-size: 12px;

@@ -84,14 +84,20 @@ func (b *daemonLogBuffer) String() string {
 }
 
 // daemonCaptureOutput 为 true 时重定向 stdout/stderr 到 Web「守护进程日志」缓冲。
-// Windows 默认为 false：为子进程分配独立控制台（CREATE_NEW_CONSOLE），便于 easytier-core 持续展示节点等信息。
-// 需要仅后台运行并在页面看日志时，设置环境变量 SKYLINK_EASYTIER_DAEMON_CAPTURE_OUTPUT=1。
+// Windows 默认为 true：后台隐藏窗口运行，不弹出独立控制台；如需调试控制台可显式设为 0/false/no/off。
+// 非 Windows 平台始终捕获输出。
 func daemonCaptureOutput() bool {
 	if runtime.GOOS != "windows" {
 		return true
 	}
 	v := strings.ToLower(strings.TrimSpace(os.Getenv("SKYLINK_EASYTIER_DAEMON_CAPTURE_OUTPUT")))
-	return v == "1" || v == "true" || v == "yes" || v == "on"
+	if v == "" {
+		return true
+	}
+	if v == "0" || v == "false" || v == "no" || v == "off" {
+		return false
+	}
+	return true
 }
 
 // NewDaemonManager 创建一个新的 DaemonManager 实例。
@@ -161,7 +167,7 @@ func (m *daemonManager) Start(ctx context.Context, cfg DaemonConfig) error {
 	m.lastEnvFile = cfg.EnvFile
 	m.lastWorkDir = cfg.WorkDir
 
-	// Windows 默认新建独立控制台展示 easytier 节点界面；仅捕获模式时写入日志缓冲供 Web 查询。
+	// Windows 默认后台捕获并隐藏窗口；仅显式关闭捕获时才新建独立控制台。
 	if captureOut && stdoutPipe != nil && stderrPipe != nil {
 		go func() { _, _ = io.Copy(m.logBuf, stdoutPipe) }()
 		go func() { _, _ = io.Copy(m.logBuf, stderrPipe) }()

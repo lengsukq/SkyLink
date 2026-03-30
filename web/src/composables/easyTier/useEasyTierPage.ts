@@ -25,7 +25,6 @@ const form = reactive({
 const daemonStatus = reactive({
   running: false,
   pid: 0,
-  last_start_error: '',
   started_version: '',
 })
 const daemonModeEnabled = ref(false)
@@ -101,7 +100,6 @@ const canDeleteProfile = computed(() => profiles.value.length > 1 && !!activePro
 
 const aggregatedErrors = computed(() => {
   const list: string[] = []
-  if (daemonStatus.last_start_error) list.push(`上次启动错误：${daemonStatus.last_start_error}`)
   if (status.error) list.push(status.error)
   if (releasesError.value) list.push(releasesError.value)
   if (runtimeError.value) list.push(runtimeError.value)
@@ -593,13 +591,11 @@ async function loadDaemonStatus() {
     const { data } = await api.get(profilePath('/daemon/status'))
     daemonStatus.running = !!data?.running
     daemonStatus.pid = data?.pid || 0
-    daemonStatus.last_start_error = data?.last_start_error || ''
     daemonStatus.started_version = data?.started_version || ''
     daemonModeEnabled.value = !!data?.daemon_mode_enabled
   } catch (_) {
     daemonStatus.running = false
     daemonStatus.pid = 0
-    daemonStatus.last_start_error = ''
     daemonStatus.started_version = ''
     daemonModeEnabled.value = false
   }
