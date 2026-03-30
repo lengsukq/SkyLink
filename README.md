@@ -1,70 +1,115 @@
 # SkyLink
 
-单隧道分流 + Cloudflare DNS 管理 + DDNS（IPv4/IPv6），带 Web 管理界面。适用于家庭服务器仅有一条隧道（如樱花 Frp）时，按域名将流量转发到不同本地服务，并统一管理 DNS 与动态解析。
+单隧道分流 + Cloudflare DNS 管理 + DDNS（IPv4/IPv6）+ 可选 EasyTier Mesh，一体化 Web 管理面板。
 
-## 功能概览
+适用于家庭服务器只有一个公网入口（如 Frp/内网穿透）时，按域名把流量转发到不同内网服务，同时统一管理 DNS 和动态解析。
 
-| 功能 | 说明 |
+## 核心能力
+
+| 模块 | 能力 |
 |------|------|
-| **反向代理** | 按请求 Host（如 `app.example.com`）转发到不同本地后端（如 `http://127.0.0.1:3000`） |
-| **一键映射** | 添加映射时可同时创建 Cloudflare CNAME 记录，并可使用设置中的默认 CNAME 目标（如 Frp 出口域名） |
-| **Cloudflare** | 多账号支持；在选定账号下管理 Zone、DNS 记录（A / AAAA / CNAME / TXT / MX 等） |
-| **DDNS** | 定时将当前公网 **IPv4 / IPv6** 更新到指定 Cloudflare A 或 AAAA 记录，按账号隔离 |
-| **EasyTier** | 可选 mesh VPN：在界面配置网络/版本，查看节点与路由，映射时可选 mesh 内节点作为后端 |
-| **SQLite** | 映射、DDNS 配置、Cloudflare 账号与设置持久化 |
+| 反向代理 | 按请求 Host 转发到不同后端服务（例如 `app.example.com -> http://127.0.0.1:3000`） |
+| 一键映射 | 创建映射时可联动创建 Cloudflare DNS 记录 |
+| Cloudflare 中心 | 多账号、分 Zone 管理 DNS 记录（A/AAAA/CNAME/TXT/MX 等） |
+| DDNS | 定时同步公网 IPv4/IPv6 到 Cloudflare 记录 |
+| EasyTier（可选） | 管理 mesh 配置、版本、守护进程状态，映射可直连 mesh 节点 |
+| 文件服务 | Drive/WebDAV/SMB 映射与运行状态管理 |
+| 管理安全 | 基于 Bearer Token 的管理 API 鉴权，管理员密码可持久化 |
 
-## 本地开发
+## 技术栈
 
-### 依赖
+- 后端：Go 1.21、Gin、SQLite（`modernc.org/sqlite`）
+- 前端：Vue 3、Vite、TypeScript、Pinia、Naive UI、Tailwind CSS
+- 部署：Docker 多阶段构建 + `docker compose`
+- CI/CD：GitHub Actions（镜像 + Release 产物）
 
-- Go 1.21+
-- Node 18+（仅构建前端时需要）
+## 项目结构
 
-### 后端
+```text
+SkyLink/
+├─ cmd/server/              # 服务入口
+├─ internal/                # 后端业务模块（api/proxy/ddns/cf/easytier/drive/smb/webdav...）
+├─ web/                     # 前端管理界面（Vue3 + Vite）
+├─ static/                  # 前端构建产物嵌入目录（go:embed）
+├─ scripts/                 # 构建/打包脚本（含 Windows）
+├─ data/                    # 运行时数据（SQLite、easytier env/runtime 等）
+├─ Dockerfile
+├─ docker-compose.yml
+├─ Makefile
+└─ config.example.yaml
+```
+
+## 快速开始
+
+### 1) 本地运行后端
 
 ```bash
 go mod tidy
 go run ./cmd/server
 ```
 
-默认：反代 `:18080`，管理 `:19080`，数据库 `./data/skylink.db`。
+默认端口：
 
-**后端热更新（开发时）：** 在项目根目录执行 `make dev`，修改 Go 代码会自动重新编译并重启（通过 [Air](https://github.com/air-verse/air)，无需单独安装）。
+- 反向代理入口：`http://127.0.0.1:18080`
+- 管理界面/API：`http://127.0.0.1:19080`
+- 数据库：`./data/skylink.db`
+
+### 2) 本地开发（热更新）
 
 ```bash
 make dev
 ```
 
-> 如需在本地开发环境中启用 **EasyTier 守护进程（创建 TUN 虚拟网卡）**，运行 SkyLink 的进程需要具备相应权限。最简单的方式是在开发时使用：
->
-> ```bash
-> sudo -E make dev
-> # 或
-> sudo -E go run ./cmd/server
-> ```
->
-> 仅使用反向代理 / Cloudflare / DDNS 功能时则不需要提升权限。
+该命令通过 `.air.toml` 启动 Air 热更新（无需单独安装 Air）。
 
-若已安装 Air，也可直接运行 `air`。如需指定配置文件，在 `.air.toml` 中把 `full_bin` 改为 `"./tmp/main -config config.yaml"`。
-
-### 前端（可选，开发时热更新）
+### 3) 前端开发（可选）
 
 ```bash
-cd web && npm install && npm run dev
+cd web
+npm install
+npm run dev
 ```
 
-浏览器访问 `http://localhost:5173`，Vite 会将 `/api` 代理到 `:19080`。
+访问 `http://localhost:5173`，开发代理会把 `/api` 转发到 `:19080`。
 
-### 打包含前端的二进制
+### 4) 构建可发布二进制（含前端）
 
 ```bash
-cd web && npm ci && npm run build
+cd web
+npm ci
+npm run build
+cd ..
 go build -o skylink ./cmd/server
+```
+
+## 常用命令
+
+### Makefile
+
+- `make dev`：Go 热更新开发
+- `make run`：直接运行服务
+- `make build`：构建后端二进制
+- `make sync-web`：构建并同步前端到 `static/web/dist`
+- `make package-win`：Windows 打包脚本
+
+### 前端脚本（`web/package.json`）
+
+- `npm run dev`：本地开发
+- `npm run build`：生产构建
+- `npm run preview`：预览构建结果
+- `npm run test`：Vitest
+- `npm run type-check`：TS/Vue 类型检查
+- `npm run check:all`：完整检查（类型、测试、构建）
+
+### 后端测试
+
+```bash
+go test ./...
 ```
 
 ## Docker 部署
 
-### 方式 A：docker run
+### 方式 A：`docker run`
 
 ```bash
 docker pull queensu/skylink:latest
@@ -76,63 +121,44 @@ docker run -d \
   -v "$(pwd)/data:/data" \
   -e SKYLINK_DB_PATH=/data/skylink.db \
   queensu/skylink:latest
-
-# 如需在容器内启用 EasyTier 守护进程并创建 TUN 设备，请额外添加：
-#   --cap-add=NET_ADMIN --device /dev/net/tun
-# 详情见下文「Docker 中启用 EasyTier 的额外权限」一节。
 ```
 
-### 方式 B：docker compose
+### 方式 B：`docker compose`
 
-示例 `docker-compose.yml`：
-
-```yaml
-services:
-  skylink:
-    image: queensu/skylink:latest
-    ports:
-      - "18080:18080"
-      - "19080:19080"
-    volumes:
-      - ./data:/data
-    environment:
-      - SKYLINK_DB_PATH=/data/skylink.db
-    restart: unless-stopped
-```
-
-启动：
+项目已提供 `docker-compose.yml`，直接启动：
 
 ```bash
 docker compose up -d
 ```
 
-- **反代入口**：`http://<host>:18080`
-- **管理界面**：`http://<host>:19080`
+## 登录与鉴权
 
-## 管理端登录与鉴权
+- 首次启动会在日志打印一次随机管理员密码（仅首次生成时输出）。
+- 登录地址：`http://<host>:19080/#/login`
+- 管理 API 需携带请求头：`Authorization: Bearer <token>`
+- 可用 `SKYLINK_ADMIN_PASSWORD` 固定管理员密码（与数据库持久化密码并存）。
 
-- **首次启动**：服务日志会打印一次随机管理员密码（仅首次生成时打印）。
-- **登录地址**：`http://<host>:19080/#/login`
-- **修改密码**：登录后在「设置」页修改；密码持久化到 SQLite（挂载 `./data` 即可持久化）。
-- **鉴权**：管理 API 需在请求头中携带 `Authorization: Bearer <密码>`。
+## 配置说明
 
-可选环境变量：
+### 环境变量
 
-- `SKYLINK_ADMIN_PASSWORD`：固定管理员密码（不写入数据库，与随机/持久化密码并存）。
+| 变量 | 默认值 | 说明 |
+|------|--------|------|
+| `SKYLINK_PROXY_PORT` | `18080` | 反代监听端口 |
+| `SKYLINK_ADMIN_PORT` | `19080` | 管理 API/前端端口 |
+| `SKYLINK_DB_PATH` | `./data/skylink.db` | SQLite 文件路径 |
+| `SKYLINK_REQUIRE_ADMIN` | `false` | 是否启用 Windows 非管理员启动时的提权重开 |
+| `SKYLINK_ADMIN_PASSWORD` | 空 | 固定管理员密码 |
+| `SKYLINK_EASYTIER_RPC` | `127.0.0.1:15888` | EasyTier RPC 地址 |
+| `SKYLINK_EASYTIER_ENV_FILE` | `./data/easytier.env` | EasyTier env 文件路径 |
+| `SKYLINK_EASYTIER_DAEMON_ENABLED` | `true` | 启用内置 Daemon 管理 |
+| `SKYLINK_EASYTIER_DAEMON_PATH` | `easytier-core` | EasyTier daemon 可执行文件路径 |
+| `SKYLINK_EASYTIER_RUNTIME_DIR` | `./data/easytier-bin` | EasyTier 运行时缓存目录 |
+| `SKYLINK_EASYTIER_DAEMON_CAPTURE_OUTPUT` | `true` | 是否捕获 Daemon 输出（Windows 设为 `0/false` 可弹控制台调试） |
 
-## 环境变量
+### YAML 配置（可选）
 
-| 变量 | 说明 |
-|------|------|
-| `SKYLINK_PROXY_PORT` | 反代监听端口，默认 18080 |
-| `SKYLINK_ADMIN_PORT` | 管理 API / 前端端口，默认 19080 |
-| `SKYLINK_DB_PATH` | SQLite 路径，默认 `./data/skylink.db` |
-| `SKYLINK_EASYTIER_RPC` | EasyTier RPC 地址（SkyLink 连接守护进程用），默认 `127.0.0.1:15888` |
-| `SKYLINK_EASYTIER_ENV_FILE` | EasyTier env 文件路径（可选，用于与外部进程/容器共享配置），默认与 DB 同目录的 `easytier.env` |
-
-## 配置文件（可选）
-
-通过 `-config config.yaml` 指定 YAML 配置，例如（推荐开启守护进程模式）：
+通过 `-config config.yaml` 指定，示例见 `config.example.yaml`：
 
 ```yaml
 app:
@@ -140,195 +166,51 @@ app:
   admin_port: 19080
   db_path: ./data/skylink.db
 
-# 可选：EasyTier（推荐使用本机守护进程模式）
 easytier:
   rpc_address: "127.0.0.1:15888"
   enabled: true
   daemon_enabled: true
-  daemon_path: ""          # 可选，留空则从 PATH 或自动下载
+  daemon_path: ""
   runtime_dir: "./data/easytier-bin"
-  # env_file_path: "./data/easytier.env" # 可选：需要与外部进程/容器共享配置时使用
 ```
 
-敏感信息建议用环境变量覆盖。Cloudflare 与 DDNS 使用管理界面中配置的多账号与 DDNS 条目，无需在配置文件中填写 API Token。
+> 建议：敏感项优先使用环境变量，不写入配置文件。
 
-## 与樱花 Frp 配合
+## EasyTier 使用提示（可选）
 
-1. 在樱花 Frp 创建一条隧道：将 80（及可选 443）转发到本机 SkyLink 反代端口（如 18080）。
-2. 在 SkyLink 管理界面「映射」页添加映射：域名 `xx.yyy.com` → 后端 `http://127.0.0.1:3000` 等。
-3. 在 Cloudflare 将域名 CNAME 到樱花出口域名，或使用「一键映射」在添加映射时自动创建 CNAME。
+- SkyLink 支持多 profile 管理 EasyTier 配置，每个 profile 可独立启停和查看状态。
+- 修改网络配置或版本后，需要重启 EasyTier Daemon 才会生效。
+- 若看到 `tun error Operation not permitted`，通常是 TUN 权限不足：
+  - 裸机运行请使用具备权限的账户；
+  - Docker 需添加 `--cap-add=NET_ADMIN --device /dev/net/tun`。
 
-## DDNS 说明
-
-- 支持 **A（IPv4）** 与 **AAAA（IPv6）** 记录；每条 DDNS 配置对应一条记录类型。
-- 公网 IP 通过公共接口获取（IPv4 / IPv6 分别有多个备用源）；后台按分钟轮询并更新已启用的配置。
-- DDNS 配置与 Cloudflare 多账号绑定：在管理界面选择当前 CF 账号后，DDNS 列表与新增均在该账号下生效，更新时使用对应账号的 API 更新对应 Zone 下的记录。
-
-## EasyTier（可选）
-
-可选启用 [EasyTier](https://easytier.rs/) mesh VPN，使多台设备组成虚拟内网，并在「映射」中将后端指向 mesh 内节点。
-
-### 快速上手（推荐路径：本机守护进程模式）
-
-1. 按 EasyTier 官方文档安装 CLI / Daemon（参见 `https://easytier.cn/guide/introduction.html` 及“安装 CLI”章节），确保 `easytier-cli` 与 `easytier-daemon` 在本机可用。
-2. 在 SkyLink 根目录创建 `config.yaml`，按上文示例启用：
-   - `easytier.enabled = true`
-   - `easytier.daemon_enabled = true`
-   - `easytier.rpc_address = "127.0.0.1:15888"`
-3. 启动 SkyLink：如需由 SkyLink 直接拉起 EasyTier 守护进程并在本机创建 TUN 虚拟网卡，建议以 sudo 运行，例如：
-
-   ```bash
-   sudo -E go run ./cmd/server -config config.yaml
-   ```
-4. 打开管理界面 → **EasyTier** 页，在「网络配置」卡片中：
-   - 填写 **网络名**、**网络密钥**、**初始节点（peers）**。这些字段分别对应 EasyTier 的 `network_identity.name`、`network_identity.secret` 与 `peers[].uri`，会写入 `ET_NETWORK_NAME`、`ET_NETWORK_SECRET`、`ET_PEERS`。
-   - 根据需要设置主机名（`hostname`）、公网发现节点（`external-node`）、子网代理（`proxy-networks`）、是否开启 DHCP 以及 VPN Portal。
-5. 点击「保存配置」。配置会写入内部数据库，并在需要时写入 `./data/easytier.env` 以供外部进程复用。
-6. 在「状态」卡片中使用“启动 / 停止 / 重启”按钮控制 EasyTier 守护进程，并确认本机 mesh IP 与 peers / 路由是否正常。
-
-### EasyTier 多实例（Profiles）
-
-- 现在支持在 EasyTier 页面创建多个配置实例（profiles），每个实例可独立配置 `network_name`、`peers`、`rpc_portal`、`image_tag` 等参数。
-- 每个 profile 可单独执行 Daemon 启动/停止/重启，并独立查看状态与日志。
-- 历史单配置会在首次读取时自动迁移为 `default` profile，原有 `/api/easytier/config` 与 `/api/easytier/daemon/*` 接口继续可用（映射到当前 active profile）。
-- 为避免冲突，启动前会校验 profile 间的 `rpc_portal` 与 `env_file_path` 是否重复。
-7. 在「映射」添加/编辑时，可使用「从 mesh 选择」下拉本机或对等节点 IP，填入端口后自动生成后端地址（如 `http://10.144.144.2:3000`）。
-
-### 版本与高级配置
-
-- **配置版本**：在 EasyTier 页「EasyTier 版本」中填写目标版本（镜像 tag 语义，如 `v2.2.3` 或 `latest`）。保存后会写入 `EASYTIER_IMAGE_TAG`，同时作为 RuntimeDownloader 下载守护进程时使用的版本号。
-- **当前运行版本**：状态区显示通过 `easytier-cli` 获取的当前版本；当运行版本与配置中的版本不一致时，通常表示已修改配置但尚未重启 EasyTier 守护进程。
-- **检查更新**：点击「检查更新」拉取 GitHub 最新 release，可「使用此版本」填入配置；升级时在 EasyTier 页选择目标版本并保存，然后通过“重启 Daemon”或重启 SkyLink 进程完成升级。
-- **扩展配置项（与官方配置的对应关系）**：
-  - `hostname` → `ET_HOSTNAME`：节点主机名（可选）。
-  - `external-node` → `ET_EXTERNAL_NODE`：公网发现节点地址，如 `tcp://public.easytier.cn:11010`，仅用于协助发现公网节点，非必填。
-  - `proxy-networks` → `ET_PROXY_NETWORKS`：子网代理 CIDR 列表，如 `10.0.0.0/24`，可用逗号或换行分隔多个，对应 EasyTier 配置中的 `proxy_networks`。
-  - `dhcp` → `ET_DHCP=true|false`：启用后 IPv4 可留空，由 EasyTier 自动分配。
-
-> 注意：**`虚拟 IPv4 地址（ET_IPV4）` 与 `DHCP（ET_DHCP）` 互斥**。启用 DHCP 时 SkyLink 会清空并禁用 IPv4 输入；保存配置时后端也会丢弃静态 IPv4，避免二者同时存在造成歧义或冲突。
-
-### 重启与升级
-
-- 修改配置或版本后，需重启 EasyTier 守护进程使配置生效（可在 EasyTier 页通过按钮完成）。
-- 升级版本：在 EasyTier 页选择新版本并保存，然后重启守护进程。
-
-### SkyLink 启动时自动启动 EasyTier（可选）
-
-- 在管理界面 `设置 → EasyTier` 卡片中，可开启「SkyLink 启动时自动启动 EasyTier」开关（默认关闭）。
-- 开启该开关前，需要先在 EasyTier 页面完成以下配置并启用：
-  - 勾选「启用」；
-  - 填写网络名与网络密钥；
-  - 填写至少一个初始节点（peers），即非独立模式下的入口节点地址。
-- 开关开启后，SkyLink 进程每次启动时会在 `easytier.enabled`、`easytier.daemon_enabled` 为真且上述配置完整的前提下，通过内置的 EasyTier 守护进程管理器自动拉起 EasyTier。
-- 自动启动仅影响 **SkyLink 进程启动时** 的行为；EasyTier 页顶部的「启动 / 停止 / 重启」按钮仍可随时手动控制守护进程。
-
-### 故障排查（EasyTier）
-
-- **状态页显示“EasyTier 当前未启用”**：请在 EasyTier 页开启「启用」开关并保存配置，然后启动 EasyTier 守护进程（可通过页面按钮或手动启动）。
-- **状态页提示“无法获取 EasyTier 状态 / RPC 地址不可达”**：
-  - 检查 `SKYLINK_EASYTIER_RPC` 或 UI 中的 RPC 地址是否指向正确的守护进程地址（默认 `127.0.0.1:15888`）。
-  - 确认 EasyTier 守护进程已启动，且监听地址与 SkyLink 中配置一致。
-  - 确认 `easytier-cli` 已安装并在 SkyLink 进程可见的 PATH 中，可以在同一环境下执行 `easytier-cli --version` 验证。
-- **守护进程日志出现 `tun error Operation not permitted` / `Operation not permitted (os error 1)`**：
-  - 这是 **TUN 虚拟网卡权限不足** 导致，端口监听可能正常，但创建/打开 TUN 会失败并退出。
-  - 裸机/源码运行时：需要用更高权限运行拉起 EasyTier 的进程（例如开发环境下用 `sudo -E make dev` 或 `sudo -E go run ./cmd/server ...`）。
-  - Docker/容器运行 EasyTier 时：需要授予容器创建 TUN 的权限（Linux 常见做法为 `--cap-add=NET_ADMIN --device /dev/net/tun`），否则同样会报该错误。
-
-### 裸机 + 一站式 EasyTier（Daemon 模式）
-
-在裸机部署或源码直跑场景下，推荐让 SkyLink 直接拉起并管理 EasyTier 守护进程，实现“一站式”启用。支持两种方式准备 EasyTier 二进制：
-
-- **方式 A：自行安装 EasyTier**（兼容已有环境）：
-  - 确保 `easytier-cli` 与 `easytier-daemon`（或 `easytier-core`）已安装并可在 PATH 中找到，或准备好二进制的绝对路径。
-  - 通过环境变量或 YAML 显式指定：
-
-    环境变量：
-
-    ```bash
-    export SKYLINK_EASYTIER_DAEMON_ENABLED=1
-    export SKYLINK_EASYTIER_DAEMON_PATH=/usr/local/bin/easytier-daemon # 可选，默认从 PATH 查找
-    ```
-
-    YAML：
-
-    ```yaml
-    easytier:
-      rpc_address: "127.0.0.1:15888"
-      enabled: true
-      daemon_enabled: true
-      daemon_path: "/usr/local/bin/easytier-daemon" # 可选
-    ```
-
-- **方式 B：由 SkyLink 自动下载 EasyTier 运行时**（无需预装）：
-  - 启用 daemon 模式但不设置 `daemon_path`，SkyLink 会使用内置的 RuntimeDownloader：
-    - 根据 EasyTier 页中配置的版本（镜像 tag）和后端平台（linux/amd64、darwin/arm64 等），从 GitHub Releases 自动下载对应的 EasyTier 守护进程二进制；
-    - 下载结果缓存到 `./data/easytier-bin/<version>/<os-arch>/`（可通过 `SKYLINK_EASYTIER_RUNTIME_DIR` 或 YAML 的 `easytier.runtime_dir` 覆盖）。
-  - 在 Web 界面 **EasyTier** 页的「EasyTier 版本」下方，会显示：
-    - 当前后端平台（如 `linux/amd64`）；
-    - 「下载/更新 EasyTier 运行时」按钮：点击后会为当前平台按当前版本下载或更新 EasyTier 二进制。
-
-3. 启动 SkyLink（裸机）：
-
-```bash
-# 仅当需要由 SkyLink 直接拉起 EasyTier 守护进程、并在本机创建 TUN 虚拟网卡时，建议以 sudo 运行：
-sudo -E go run ./cmd/server -config config.yaml
-```
-
-4. 在管理界面 **EasyTier** 页：
-   - 像容器模式一样配置网络名、密钥、peers、版本等并点击「保存配置」；
-   - 配置会写入 `./data/easytier.env`；
-   - 若开启 daemon 模式并勾选「启用」，SkyLink 会尝试自动启动 `easytier-daemon`。
-5. 在 **状态** 卡片中：
-   - 可以看到 EasyTier 当前运行状态（版本、mesh IP、peers / 路由）；
-   - 额外看到 Daemon 状态（运行中 / 未运行 / 上次启动错误），并可一键「启动 / 停止 / 重启」 EasyTier 守护进程。
-
-> 提示：Daemon 模式是源码运行和裸机部署场景下的推荐方式；即便在其他场景中，也始终可以通过 `SKYLINK_EASYTIER_DAEMON_PATH` 显式覆盖自动下载的二进制路径。
-
-### Docker 中启用 EasyTier 的额外权限（示例）
-
-若通过 Docker 运行 SkyLink 并启用 EasyTier 守护进程，需要为容器授予创建 TUN 设备的权限，否则会在日志中看到 `tun error Operation not permitted`：
-
-- `docker run` 示例（仅示意 EasyTier 相关权限，端口与卷请按实际调整）：
-
-```bash
-docker run -d \
-  --name skylink \
-  --restart unless-stopped \
-  -p 18080:18080 \
-  -p 19080:19080 \
-  -v "$(pwd)/data:/data" \
-  -e SKYLINK_DB_PATH=/data/skylink.db \
-  --cap-add=NET_ADMIN \
-  --device /dev/net/tun \
-  queensu/skylink:latest
-```
-
-- `docker-compose.yml` 片段：
+Docker 权限示例：
 
 ```yaml
 services:
   skylink:
     image: queensu/skylink:latest
-    ports:
-      - "18080:18080"
-      - "19080:19080"
-    volumes:
-      - ./data:/data
-    environment:
-      - SKYLINK_DB_PATH=/data/skylink.db
     cap_add:
       - NET_ADMIN
     devices:
       - /dev/net/tun:/dev/net/tun
-    restart: unless-stopped
 ```
 
-## GitHub Actions（Docker 镜像与 Release）
+## 与 Frp 场景配合（典型用法）
 
-仓库内 Workflow：推送到 `main` 或手动触发时构建并推送镜像到 GHCR，并创建 GitHub Release。
+1. 把 Frp 外部流量转发到 SkyLink `18080`。
+2. 在 SkyLink 中添加域名映射到内网服务。
+3. 在 Cloudflare 设置 CNAME，或用“一键映射”自动创建记录。
+4. 需要动态公网 IP 时，在 DDNS 页面配置对应 A/AAAA 记录。
 
-- **镜像**：`ghcr.io/<owner>/<repo>`
-- **版本 tag**：`v<github.run_number>`，同时推送 `latest`
-- **Release 附件**：`skylink_linux_amd64`、`skylink_linux_arm64`、`SHA256SUMS`
+## CI/CD 与发布
 
-需为仓库配置 `packages: write` 权限。
+仓库包含 GitHub Actions 工作流（`.github/workflows/docker-image.yml`）：
+
+- 支持按 tag（`v*`）或手动触发构建
+- 推送多架构镜像到 GHCR / Docker Hub
+- 生成 Release 附件（Linux `amd64/arm64` 二进制与校验和）
+
+## 许可证
+
+请根据仓库实际 License 文件补充。
