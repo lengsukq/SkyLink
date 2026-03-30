@@ -15,7 +15,7 @@ cloudflare:
 easytier:
   # SkyLink 连接 EasyTier 的 RPC 地址，默认为本机守护进程监听的 15888 端口。
   rpc_address: "127.0.0.1:15888"
-  # 是否启用 EasyTier 功能（启用后可在 Web UI 中查看状态、配置网络与 WireGuard）。
+  # 是否启用 EasyTier 功能（启用后可在 Web UI 中查看状态并配置网络）。
   enabled: true
   # 是否由 SkyLink 直接拉起并管理 EasyTier 守护进程（推荐）。
   daemon_enabled: true

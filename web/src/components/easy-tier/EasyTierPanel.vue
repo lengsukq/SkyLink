@@ -1,9 +1,28 @@
 <template>
-  <div>
-    <page-header
-      title="EasyTier"
-      description="配置并查看 mesh VPN 状态；映射时可选择 mesh 内节点作为后端。推荐由 SkyLink 直接拉起并管理 EasyTier 守护进程，实现一站式使用。"
-    />
+  <div class="easytier-panel">
+    <p class="easytier-tab-lead">
+      Mesh VPN 与运行时管理；映射时可选用 mesh 内节点作为后端。完整集成仅在 <strong>Windows</strong> 版 SkyLink 上可用。
+    </p>
+
+    <n-alert v-if="!easytierHostSupported" type="warning" title="当前环境不支持 EasyTier 集成" class="panel-section">
+      SkyLink 内置的 EasyTier（守护进程、下载 Windows 运行时、端口释放与 easytier-cli 状态）仅在 <strong>Windows 主机</strong>上可用。
+      若你使用 Linux/Docker 等部署，本标签无法保存配置或拉起进程；请在 Windows 上运行 SkyLink，或自行在其他环境部署 EasyTier。
+    </n-alert>
+
+    <n-card v-if="easytierHostSupported" size="small" title="SkyLink 启动选项" class="panel-section page-card">
+      <n-form label-placement="left" label-width="220">
+        <n-form-item label="SkyLink 启动时自动启动 EasyTier">
+          <n-switch
+            :value="easytierAutostart"
+            :loading="easytierAutostartSaving"
+            @update:value="onToggleEasyTierAutostart"
+          />
+        </n-form-item>
+      </n-form>
+      <p class="status-hint">
+        需已配置网络名、网络密钥和初始节点（peers）并开启下方「启用」。仅影响进程随 SkyLink 自启，本标签内手动启动/重启不受影响。
+      </p>
+    </n-card>
 
     <easy-tier-intro-alert />
 
@@ -17,7 +36,7 @@
       @delete="deleteCurrentProfile"
     />
 
-    <n-card title="状态" class="page-section page-card">
+    <n-card title="状态" class="panel-section page-card">
       <n-space vertical :size="12">
         <n-alert
           v-if="aggregatedErrors.length"
@@ -60,20 +79,21 @@
           </span>
           <n-button
             size="tiny"
-            :disabled="!daemonModeEnabled || !daemonStatus.running"
-            :title="!daemonModeEnabled ? '需在配置中开启 easytier.daemon_enabled 并重启 SkyLink' : (!daemonStatus.running ? '守护进程未运行' : '')"
+            :disabled="!easytierHostSupported || !daemonModeEnabled || !daemonStatus.running"
+            :title="!easytierHostSupported ? '仅在 Windows 上可用' : !daemonModeEnabled ? '需在配置中开启 easytier.daemon_enabled 并重启 SkyLink' : (!daemonStatus.running ? '守护进程未运行' : '')"
             @click="stopDaemon"
           >停止</n-button>
           <n-button
             size="tiny"
-            :disabled="!daemonModeEnabled"
-            :title="daemonModeEnabled ? (daemonStatus.running ? '重启 EasyTier 守护进程' : '启动 EasyTier 守护进程') : '需在配置中开启 easytier.daemon_enabled 并重启 SkyLink'"
+            :disabled="!easytierHostSupported || !daemonModeEnabled"
+            :title="!easytierHostSupported ? '仅在 Windows 上可用' : daemonModeEnabled ? (daemonStatus.running ? '重启 EasyTier 守护进程' : '启动 EasyTier 守护进程') : '需在配置中开启 easytier.daemon_enabled 并重启 SkyLink'"
             @click="startOrRestartDaemon"
           >{{ daemonStatus.running ? '重启' : '启动' }}</n-button>
           <n-button
             size="tiny"
+            :disabled="!easytierHostSupported"
             :loading="releasePortLoading"
-            title="结束占用 EasyTier 相关端口的进程（RPC 15888、listeners 11010–11013 等），便于重新启动"
+            :title="!easytierHostSupported ? '仅在 Windows 上可用' : '结束占用 EasyTier 相关端口的进程（RPC 15888、listeners 11010–11013 等），便于重新启动'"
             @click="releasePort"
           >解除端口占用</n-button>
           <span v-if="!daemonModeEnabled" class="status-hint">
@@ -82,7 +102,7 @@
         </n-space>
         <n-divider v-if="daemonModeEnabled" style="margin: 12px 0 8px 0">守护进程日志</n-divider>
         <n-space v-if="daemonModeEnabled" vertical size="small">
-          <n-button size="tiny" :loading="daemonLogsLoading" @click="loadDaemonLogs">刷新</n-button>
+          <n-button size="tiny" :disabled="!easytierHostSupported" :loading="daemonLogsLoading" @click="loadDaemonLogs">刷新</n-button>
           <pre class="daemon-logs">{{ daemonLogs || '（暂无日志，启动守护进程后点击刷新）' }}</pre>
         </n-space>
         <div v-if="!form.enabled" class="status-hint">
@@ -119,7 +139,35 @@
       </n-space>
     </n-card>
 
-    <n-grid cols="1 s:1 m:2 l:2 xl:3" x-gap="16" y-gap="16" class="page-section">
+    <n-card title="在网信息（easytier-cli 原始输出）" class="panel-section page-card">
+      <p class="status-hint" style="margin-bottom: 8px">
+        对应文档中的管理命令输出；用于核对 peers、路由与本机节点。
+        <a href="https://easytier.cn/guide/network/configurations.html" target="_blank" rel="noopener noreferrer">完整配置选项</a>
+        中的环境变量（如 <code>ET_RPC_PORTAL</code>）需与下方「高级」中的 RPC 一致。
+      </p>
+      <n-space align="center" wrap>
+        <n-select
+          v-model:value="cliRawTarget"
+          :options="cliRawTargetOptions"
+          style="min-width: 180px"
+          size="small"
+          :disabled="!easytierHostSupported"
+        />
+        <n-button size="small" :loading="cliRawLoading" :disabled="!easytierHostSupported" @click="loadCliRaw">获取</n-button>
+      </n-space>
+      <div v-if="cliRawMetaError" class="status-error" style="margin-top: 10px">{{ cliRawMetaError }}</div>
+      <template v-if="cliRawStdout || cliRawStderr">
+        <div v-if="cliRawStdout" class="cli-raw-label">stdout</div>
+        <pre v-if="cliRawStdout" class="cli-raw-block">{{ cliRawStdout }}</pre>
+        <div v-if="cliRawStderr" class="cli-raw-label">stderr</div>
+        <pre v-if="cliRawStderr" class="cli-raw-block cli-raw-err">{{ cliRawStderr }}</pre>
+      </template>
+      <p v-else-if="easytierHostSupported && !cliRawLoading && !cliRawMetaError" class="status-hint" style="margin-top: 8px">
+        选择子命令后点击「获取」。需守护进程已运行且本机可执行 <code>easytier-cli</code>。
+      </p>
+    </n-card>
+
+    <n-grid cols="1 s:1 m:2 l:2 xl:3" x-gap="16" y-gap="16" class="panel-section">
       <n-gi>
         <n-card title="版本与运行时" class="page-card">
           <n-space vertical size="small">
@@ -131,27 +179,29 @@
                 filterable
                 clearable
                 style="width: 100%"
+                :disabled="!easytierHostSupported"
                 @update:value="onVersionOrPlatformChange"
               />
             </n-form-item>
-            <n-form-item label="平台">
+            <n-form-item label="平台（Windows）">
               <n-select
                 v-model:value="selectedPlatformKey"
                 :options="platformOptions"
-                placeholder="选择平台"
+                placeholder="Windows amd64 / arm64"
                 style="width: 100%"
+                :disabled="!easytierHostSupported"
                 @update:value="onVersionOrPlatformChange"
               />
             </n-form-item>
             <n-space align="center">
-              <n-button :loading="runtimeInstalling" @click="installRuntime">
+              <n-button :loading="runtimeInstalling" :disabled="!easytierHostSupported" @click="installRuntime">
                 下载 EasyTier 运行时
               </n-button>
-              <n-button :loading="runtimeRemoving" :disabled="!runtimeInstalled" @click="removeRuntime">
+              <n-button :loading="runtimeRemoving" :disabled="!easytierHostSupported || !runtimeInstalled" @click="removeRuntime">
                 移除
               </n-button>
             </n-space>
-            <span v-if="runtimeInstalled" class="runtime-hint">已安装：当前所选版本与平台。启动/停止/重启请在顶部状态卡片选择已下载版本后操作。<span v-if="!daemonModeEnabled">（需先开启守护进程模式并重启 SkyLink）</span></span>
+            <span v-if="runtimeInstalled" class="runtime-hint">已安装：当前所选版本与平台。启动/停止/重启请在上方状态卡片选择已下载版本后操作。<span v-if="!daemonModeEnabled">（需先开启守护进程模式并重启 SkyLink）</span></span>
             <span v-else-if="selectedVersion && selectedPlatformKey" class="runtime-hint">未安装</span>
             <span v-if="releasesError" class="status-error">{{ releasesError }}</span>
             <span v-if="runtimeError" class="status-error">{{ runtimeError }}</span>
@@ -181,7 +231,7 @@
       <n-gi>
         <n-card title="网络配置" class="page-card">
           <div class="status-hint" style="margin-bottom: 8px">
-            启用后，可通过顶部状态卡片控制 EasyTier 守护进程运行，并在本页查看 mesh 状态与 WireGuard 配置。
+            启用后，可通过上方状态卡片控制 EasyTier 守护进程运行，并查看 mesh 状态。
           </div>
           <n-form ref="formRef" :model="form" label-placement="left" label-width="120">
             <n-form-item label="网络名">
@@ -268,7 +318,7 @@
                 v-model:value="form.proxy_networks"
                 type="textarea"
                 :rows="2"
-                placeholder="如 10.0.0.0/24，多个子网用逗号或换行（ET_PROXY_NETWORKS / vpn_portal_config.proxy_networks）"
+                placeholder="如 10.0.0.0/24，多个子网用逗号或换行（ET_PROXY_NETWORKS / proxy_networks）"
               />
             </n-form-item>
             <n-form-item label="启用">
@@ -277,46 +327,15 @@
             <n-form-item v-if="showAdvanced" label="RPC 地址">
               <n-input v-model:value="form.rpc_portal" placeholder="SkyLink 连接 EasyTier 的地址，如 easytier:15888" />
             </n-form-item>
-            <n-form-item v-if="showAdvanced" label="VPN Portal（WireGuard）">
-              <n-input
-                v-model:value="form.vpn_portal"
-                placeholder="如 wg://0.0.0.0:11013/10.14.14.0/24"
-              />
-              <template #feedback>
-                <span class="status-hint">启用并保存后，可在本页下方「WireGuard 客户端配置」卡片中获取客户端配置。</span>
-              </template>
-            </n-form-item>
           </n-form>
           <n-space>
-            <n-button type="primary" :loading="saving" @click="save">保存配置</n-button>
-            <n-button :loading="saving" @click="saveAndRestart">保存并重启</n-button>
+            <n-button type="primary" :loading="saving" :disabled="!easytierHostSupported" @click="save">保存配置</n-button>
+            <n-button :loading="saving" :disabled="!easytierHostSupported" @click="saveAndRestart">保存并重启</n-button>
             <n-button @click="showAdvanced = !showAdvanced">{{ showAdvanced ? '收起高级' : '高级' }}</n-button>
           </n-space>
         </n-card>
       </n-gi>
     </n-grid>
-
-    <n-card title="WireGuard 客户端配置（VPN Portal）" class="page-section page-card">
-      <n-space vertical :size="8">
-        <div class="status-hint">
-          需先在上方网络配置的「高级」中启用并保存 VPN Portal，再点击获取配置。
-        </div>
-        <n-space align="center" :size="8">
-          <n-button size="small" :loading="vpnPortalLoading" @click="loadVPNPortalConfig">获取配置</n-button>
-          <n-button size="small" :disabled="!vpnPortal.config" @click="copyVPNPortalConfig">复制</n-button>
-        </n-space>
-        <div v-if="vpnPortal.error" class="status-error">
-          {{ vpnPortal.error }}
-        </div>
-        <n-input
-          v-model:value="vpnPortal.config"
-          type="textarea"
-          :rows="8"
-          readonly
-          placeholder="在 EasyTier 页配置并启用 VPN Portal，重启 EasyTier 后点击“获取配置”以显示 WireGuard 客户端配置。"
-        />
-      </n-space>
-    </n-card>
   </div>
 </template>
 
@@ -326,7 +345,6 @@ import {
   NForm,
   NFormItem,
   NInput,
-  NInputGroup,
   NButton,
   NSpace,
   NDataTable,
@@ -342,10 +360,16 @@ import {
   NSelect,
   NAlert,
 } from 'naive-ui'
-import PageHeader from '../components/PageHeader.vue'
-import EasyTierIntroAlert from '../components/easy-tier/EasyTierIntroAlert.vue'
-import EasyTierProfilesCard from '../components/easy-tier/EasyTierProfilesCard.vue'
-import { useEasyTierPage } from '../composables/easyTier/useEasyTierPage'
+import EasyTierIntroAlert from './EasyTierIntroAlert.vue'
+import EasyTierProfilesCard from './EasyTierProfilesCard.vue'
+import { useEasyTierPage } from '../../composables/easyTier/useEasyTierPage'
+
+const cliRawTargetOptions = [
+  { label: 'peer（对等节点）', value: 'peer' },
+  { label: 'route（路由）', value: 'route' },
+  { label: 'node（本机）', value: 'node' },
+  { label: 'version（版本）', value: 'version' },
+]
 
 const {
   formRef,
@@ -358,16 +382,11 @@ const {
   saving,
   statusLoading,
   versionCheckLoading,
-  vpnPortalLoading,
   lastStatusUpdated,
   status,
-  vpnPortal,
   versionCheck,
-  platform,
-  releasesList,
+  easytierHostSupported,
   releasesError,
-  platformsList,
-  currentPlatformLabel,
   releaseOptions,
   platformOptions,
   selectedVersion,
@@ -375,15 +394,21 @@ const {
   runtimeInstalling,
   runtimeRemoving,
   runtimeInstalled,
-  runtimeVersion,
   platformError,
   runtimeError,
   installedList,
-  removingInstalledKey,
   daemonLogs,
   daemonLogsLoading,
   releasePortLoading,
-  profiles,
+  easytierAutostart,
+  easytierAutostartSaving,
+  onToggleEasyTierAutostart,
+  cliRawTarget,
+  cliRawStdout,
+  cliRawStderr,
+  cliRawMetaError,
+  cliRawLoading,
+  loadCliRaw,
   activeProfileId,
   newProfileName,
   profileOptions,
@@ -397,35 +422,37 @@ const {
   installedListColumns,
   onDHCPChange,
   onIPv4Change,
-  loadConfig,
-  loadProfiles,
   onProfileChange,
   createProfile,
   deleteCurrentProfile,
-  loadPlatform,
-  loadReleases,
-  loadPlatforms,
-  loadRuntimeInstalled,
-  loadInstalledList,
   onVersionOrPlatformChange,
   save,
   saveAndRestart,
   loadStatus,
-  loadDaemonStatus,
   loadDaemonLogs,
   stopDaemon,
   startOrRestartDaemon,
   releasePort,
   installRuntime,
   removeRuntime,
-  loadVPNPortalConfig,
-  copyVPNPortalConfig,
   checkUpdate,
   useLatestVersion,
 } = useEasyTierPage()
 </script>
 
 <style scoped>
+.easytier-panel {
+  padding-bottom: 8px;
+}
+.easytier-tab-lead {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.5;
+}
+.panel-section {
+  margin-bottom: 16px;
+}
 .easytier-error-list {
   margin: 0;
   padding-left: 1.2em;
@@ -471,11 +498,6 @@ const {
   font-size: 12px;
   color: #64748b;
 }
-.field-label {
-  width: 120px;
-  font-size: 13px;
-  color: #64748b;
-}
 .daemon-logs {
   margin: 0;
   padding: 10px;
@@ -487,5 +509,25 @@ const {
   border-radius: 6px;
   white-space: pre-wrap;
   word-break: break-all;
+}
+.cli-raw-label {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+.cli-raw-block {
+  margin: 4px 0 0 0;
+  padding: 10px;
+  max-height: 320px;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.4;
+  background: var(--n-color-target, #f5f5f5);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.cli-raw-err {
+  background: rgba(239, 68, 68, 0.08);
 }
 </style>

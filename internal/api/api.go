@@ -391,6 +391,10 @@ func (s *Server) maybeStartEasyTierDaemon() {
 	if s.easyTierDaemons == nil || s.easyTierCfg == nil || !s.easyTierCfg.DaemonEnabled {
 		return
 	}
+	if !easytier.EasyTierSupportedOnHost() {
+		log.Printf("EasyTier autostart skipped: host OS is not Windows")
+		return
+	}
 	autostart, err := s.store.GetEasyTierAutostart()
 	if err != nil {
 		log.Printf("load EasyTier autostart setting failed: %v", err)
@@ -411,10 +415,7 @@ func (s *Server) maybeStartEasyTierDaemon() {
 		envPath := s.resolveEasyTierEnvPath(profile.ID, profile.Config.EnvFilePath)
 		daemonPath := s.resolveDaemonPath(context.Background(), profile.Config.ImageTag)
 		ctx, cancel := context.WithTimeout(context.Background(), easyTierStartTimeout)
-		err := s.easyTierDaemons.Start(ctx, profile.ID, easytier.DaemonConfig{
-			BinaryPath: daemonPath,
-			EnvFile:    envPath,
-		})
+		err := s.easyTierDaemons.Start(ctx, profile.ID, easytier.NewDaemonConfig(daemonPath, envPath))
 		cancel()
 		if err != nil {
 			log.Printf("auto start EasyTier daemon failed (%s): %v", profile.ID, err)

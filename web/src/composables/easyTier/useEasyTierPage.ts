@@ -1,5 +1,5 @@
 /**
- * EasyTier 页面状态与操作（由 views/EasyTier.vue 拼装模板）。
+ * EasyTier 状态与操作（由 Windows 工具页中的 EasyTierPanel 使用）。
  */
 import { ref, reactive, onMounted, h, computed } from 'vue'
 import { NButton } from 'naive-ui'
@@ -20,7 +20,6 @@ const form = reactive({
   external_node: '',
   proxy_networks: '',
   dhcp: false,
-  vpn_portal: '',
 })
 const daemonStatus = reactive({
   running: false,
@@ -35,7 +34,6 @@ const showAdvanced = ref(false)
 const saving = ref(false)
 const statusLoading = ref(false)
 const versionCheckLoading = ref(false)
-const vpnPortalLoading = ref(false)
 const lastStatusUpdated = ref('')
 
 const status = reactive({
@@ -47,10 +45,6 @@ const status = reactive({
   self_hostname: '',
   peers: [] as any[],
   routes: [] as any[],
-})
-const vpnPortal = reactive({
-  config: '',
-  error: '',
 })
 const versionCheck = reactive({
   current_version: '',
@@ -67,6 +61,8 @@ const releasesList = ref<any[]>([])
 const releasesError = ref('')
 const platformsList = ref<any[]>([])
 const currentPlatformLabel = ref('')
+/** 后端显式为 true 时集成可用（仅 Windows SkyLink）。 */
+const easytierHostSupported = ref(false)
 const releaseOptions = ref<any[]>([])
 const platformOptions = ref<any[]>([])
 const selectedVersion = ref<string | null>(null)
@@ -82,6 +78,13 @@ const removingInstalledKey = ref('')
 const daemonLogs = ref('')
 const daemonLogsLoading = ref(false)
 const releasePortLoading = ref(false)
+const easytierAutostart = ref(false)
+const easytierAutostartSaving = ref(false)
+const cliRawTarget = ref<'peer' | 'route' | 'node' | 'version'>('peer')
+const cliRawStdout = ref('')
+const cliRawStderr = ref('')
+const cliRawMetaError = ref('')
+const cliRawLoading = ref(false)
 const profiles = ref<any[]>([])
 const activeProfileId = ref('')
 const newProfileName = ref('')
@@ -96,7 +99,6 @@ const aggregatedErrors = computed(() => {
   if (releasesError.value) list.push(releasesError.value)
   if (runtimeError.value) list.push(runtimeError.value)
   if (platformError.value) list.push(platformError.value)
-  if (vpnPortal.error) list.push(vpnPortal.error)
   return list
 })
 
@@ -198,7 +200,9 @@ const installedListColumns = [
           size: 'tiny',
           tertiary: true,
           loading: removingInstalledKey.value === key,
-          disabled: removingInstalledKey.value !== '' && removingInstalledKey.value !== key,
+          disabled:
+            !easytierHostSupported.value ||
+            (removingInstalledKey.value !== '' && removingInstalledKey.value !== key),
           onClick: () => removeInstalledItem(row),
         },
         { default: () => '移除' }
@@ -236,7 +240,6 @@ async function loadConfig() {
       form.external_node = data.external_node || ''
       form.proxy_networks = data.proxy_networks || ''
       form.dhcp = !!data.dhcp
-      form.vpn_portal = data.vpn_portal || ''
       const peers = (data.peers || '').trim()
       form.peers = peers
       if (!peers) {
@@ -322,11 +325,13 @@ async function loadPlatform() {
     platform.os = data?.os || ''
     platform.arch = data?.arch || ''
     platform.label = data?.label || ''
+    easytierHostSupported.value = data?.easytier_host_supported === true
     platformError.value = ''
   } catch (e) {
     platform.os = ''
     platform.arch = ''
     platform.label = ''
+    easytierHostSupported.value = false
     platformError.value = '无法获取后端平台信息，运行时下载功能可能不可用。'
   }
 }
@@ -351,7 +356,13 @@ async function loadPlatforms() {
     const list = data?.platforms || []
     platformsList.value = list
     currentPlatformLabel.value = data?.current?.label || ''
-    platformOptions.value = list.map((p: any) => ({ label: p.label, value: p.label }))
+    if (data?.easytier_host_supported === true || data?.easytier_host_supported === false) {
+      easytierHostSupported.value = data.easytier_host_supported === true
+    }
+    platformOptions.value = list.map((p: any) => ({
+      label: p.label || `${p.os}/${p.arch}`,
+      value: `${p.os}/${p.arch}`,
+    }))
   } catch (_) {
     platformsList.value = []
     platformOptions.value = []
@@ -705,33 +716,6 @@ async function removeRuntime() {
   }
 }
 
-async function loadVPNPortalConfig() {
-  vpnPortalLoading.value = true
-  try {
-    const { data } = await api.get(profilePath('/vpn-portal'))
-    vpnPortal.config = data?.config || ''
-    vpnPortal.error = data?.error || ''
-    if (!vpnPortal.config && !vpnPortal.error) {
-      vpnPortal.error = '未获取到 WireGuard 配置，可能未在高级配置中启用 VPN Portal，或 EasyTier 未启动/未加入网络。'
-    }
-  } catch (_) {
-    vpnPortal.config = ''
-    vpnPortal.error = '获取 WireGuard 配置失败，可能未启用 VPN Portal 或 EasyTier 未启动 / RPC 地址不可达。'
-  } finally {
-    vpnPortalLoading.value = false
-  }
-}
-
-async function copyVPNPortalConfig() {
-  if (!vpnPortal.config) return
-  try {
-    await navigator.clipboard.writeText(vpnPortal.config)
-    notifySuccess('已复制', 'WireGuard 配置已复制到剪贴板。')
-  } catch (_) {
-    notifyError('复制失败', '无法复制到剪贴板，请手动选择并复制。')
-  }
-}
-
 async function checkUpdate() {
   versionCheckLoading.value = true
   try {
@@ -753,9 +737,59 @@ function useLatestVersion() {
   }
 }
 
+async function loadEasyTierAutostart() {
+  try {
+    const { data } = await api.get('/easytier/settings')
+    easytierAutostart.value = !!data?.autostart_on_startup
+  } catch (_) {
+    easytierAutostart.value = false
+  }
+}
+
+async function loadCliRaw() {
+  cliRawLoading.value = true
+  cliRawMetaError.value = ''
+  cliRawStdout.value = ''
+  cliRawStderr.value = ''
+  try {
+    const { data } = await api.get(profilePath('/cli-output'), {
+      params: { target: cliRawTarget.value },
+      silentError: true,
+    } as any)
+    if (data?.hint && data?.ok === false) {
+      cliRawMetaError.value = data.hint
+      return
+    }
+    cliRawStdout.value = typeof data?.stdout === 'string' ? data.stdout : ''
+    cliRawStderr.value = typeof data?.stderr === 'string' ? data.stderr : ''
+    if (data?.error) {
+      cliRawMetaError.value = String(data.error)
+    }
+  } catch (e: any) {
+    cliRawMetaError.value = e?.response?.data?.error || e?.message || String(e)
+  } finally {
+    cliRawLoading.value = false
+  }
+}
+
+async function onToggleEasyTierAutostart(val: boolean) {
+  const previous = easytierAutostart.value
+  easytierAutostart.value = val
+  easytierAutostartSaving.value = true
+  try {
+    await api.put('/easytier/settings', { autostart_on_startup: !!val })
+    notifySuccess('已更新', 'SkyLink 启动时自动启动 EasyTier 已更新')
+  } catch (_) {
+    easytierAutostart.value = previous
+  } finally {
+    easytierAutostartSaving.value = false
+  }
+}
+
 onMounted(async () => {
   await loadProfiles()
-  loadPlatform()
+  await loadPlatform()
+  await loadEasyTierAutostart()
   await loadConfig()
   loadStatus()
   await loadReleases()
@@ -768,8 +802,10 @@ onMounted(async () => {
       form.image_tag = releasesList.value[0].tag_name
     }
   }
-  if (!selectedPlatformKey.value) {
-    selectedPlatformKey.value = currentPlatformLabel.value || (platformOptions.value[0]?.value ?? null)
+  if (!selectedPlatformKey.value && platformOptions.value.length) {
+    const cur = platform.os && platform.arch ? `${platform.os}/${platform.arch}` : ''
+    const match = cur ? platformOptions.value.find((o) => o.value === cur) : undefined
+    selectedPlatformKey.value = match?.value ?? platformOptions.value[0].value
   }
   await loadRuntimeInstalled()
   await loadInstalledList()
@@ -785,16 +821,15 @@ onMounted(async () => {
     saving,
     statusLoading,
     versionCheckLoading,
-    vpnPortalLoading,
     lastStatusUpdated,
     status,
-    vpnPortal,
     versionCheck,
     platform,
     releasesList,
     releasesError,
     platformsList,
     currentPlatformLabel,
+    easytierHostSupported,
     releaseOptions,
     platformOptions,
     selectedVersion,
@@ -810,6 +845,15 @@ onMounted(async () => {
     daemonLogs,
     daemonLogsLoading,
     releasePortLoading,
+    easytierAutostart,
+    easytierAutostartSaving,
+    onToggleEasyTierAutostart,
+    cliRawTarget,
+    cliRawStdout,
+    cliRawStderr,
+    cliRawMetaError,
+    cliRawLoading,
+    loadCliRaw,
     profiles,
     activeProfileId,
     newProfileName,
@@ -845,8 +889,6 @@ onMounted(async () => {
     releasePort,
     installRuntime,
     removeRuntime,
-    loadVPNPortalConfig,
-    copyVPNPortalConfig,
     checkUpdate,
     useLatestVersion,
   }

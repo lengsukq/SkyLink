@@ -73,6 +73,27 @@ func parseVersionFromCLI(s string) string {
 	return ""
 }
 
+// CLISubcommandRaw 执行白名单内的 easytier-cli 子命令，返回原始 stdout/stderr（用于与官方文档对照排查）。
+func (c *Client) CLISubcommandRaw(sub string) (stdout, stderr string, err error) {
+	sub = strings.TrimSpace(sub)
+	if sub == "" {
+		return "", "", fmt.Errorf("empty subcommand")
+	}
+	if sub == "version" {
+		out, errOut, err := c.runCLI("--version")
+		if err != nil {
+			out2, errOut2, err2 := c.runCLI("version")
+			if err2 != nil {
+				return string(out), string(errOut), err
+			}
+			return string(out2), string(errOut2), nil
+		}
+		return string(out), string(errOut), nil
+	}
+	out, errOut, err := c.runCLI(sub)
+	return string(out), string(errOut), err
+}
+
 // Status 获取 mesh 状态：本机 IP、peers、routes
 func (c *Client) Status() (*Status, error) {
 	st := &Status{OK: true, Peers: []Peer{}, Routes: []Route{}}
@@ -224,16 +245,6 @@ func parseRouteTable(out []byte) []Route {
 		}
 	}
 	return routes
-}
-
-// VPNPortalConfig 获取 VPN Portal（WireGuard）客户端配置文本
-func (c *Client) VPNPortalConfig() (string, error) {
-	out, _, err := c.runCLI("vpn-portal")
-	if err != nil {
-		return "", err
-	}
-	cfg := strings.TrimSpace(string(out))
-	return cfg, nil
 }
 
 func parseNodeOutput(out []byte) (ipv4, hostname string) {

@@ -13,7 +13,8 @@ COPY . .
 COPY --from=frontend /app/web/dist ./static/web/dist
 RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -o /skylink ./cmd/server
 
-# Stage 2b: EasyTier CLI（与 daemon 同版本，用于 status/version；若镜像中无则生成空占位，EasyTier 页状态会不可用）
+# Stage 2b: EasyTier CLI（Linux 占位）。注意：SkyLink 集成的 EasyTier 守护进程/运行时下载/端口释放仅支持 Windows 主机；
+# Linux 镜像内本节功能在 UI 与 API 上均会降级（参见 easytier.EasyTierSupportedOnHost）。
 FROM easytier/easytier:latest AS easytier
 RUN F=$(find / -name 'easytier-cli' -type f 2>/dev/null | head -1) && if [ -n "$F" ]; then cp "$F" /out-easytier-cli; else touch /out-easytier-cli; fi
 

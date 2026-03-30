@@ -50,8 +50,8 @@
                 {{ stats.easytier_has_runtime ? '已安装' : '未准备' }}
               </n-tag>
             </n-space>
-            <n-button size="small" type="primary" tag="a" :href="`#${ROUTE_PATHS.easyTier}`">
-              前往 EasyTier 页面
+            <n-button size="small" type="primary" tag="a" :href="`#${ROUTE_PATHS.windowsTools}?tab=easytier`">
+              Windows 工具 · EasyTier
             </n-button>
           </n-space>
         </n-card>

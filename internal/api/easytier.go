@@ -14,6 +14,18 @@ import (
 	"github.com/skylink/skylink/internal/store"
 )
 
+// easyTierHostMutationAbort 非 Windows 主机上返回 501 并中止处理。
+func easyTierHostMutationAbort(c *gin.Context) bool {
+	if easytier.EasyTierSupportedOnHost() {
+		return false
+	}
+	c.JSON(http.StatusNotImplemented, gin.H{
+		"error": easytier.HostNotSupportedMessage,
+		"code":  "easytier_windows_only",
+	})
+	return true
+}
+
 // daemonStartRequest 启动/重启 daemon 时可选传入的版本，用于解析二进制路径。
 type daemonStartRequest struct {
 	ImageTag string `json:"image_tag"`
@@ -136,6 +148,9 @@ func (s *Server) getEasyTierConfig(c *gin.Context) {
 
 // putEasyTierConfig 保存 EasyTier 配置，并在需要时写入 env 文件供外部进程使用
 func (s *Server) putEasyTierConfig(c *gin.Context) {
+	if easyTierHostMutationAbort(c) {
+		return
+	}
 	var cfg store.EasyTierConfig
 	if err := c.ShouldBindJSON(&cfg); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -216,19 +231,6 @@ func (s *Server) getEasyTierVersionCheck(c *gin.Context) {
 	})
 }
 
-// getEasyTierVPNPortal 返回 VPN Portal（WireGuard）客户端配置文本
-func (s *Server) getEasyTierVPNPortal(c *gin.Context) {
-	profile, err := s.getCurrentEasyTierProfile()
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"config": "",
-			"error":  err.Error(),
-		})
-		return
-	}
-	s.respondEasyTierVPNPortal(c, profile.Config)
-}
-
 // postEasyTierDaemonStart 手动启动 EasyTier daemon（裸机场景）
 func (s *Server) postEasyTierDaemonStart(c *gin.Context) {
 	profile, err := s.getCurrentEasyTierProfile()
@@ -249,6 +251,9 @@ func (s *Server) postEasyTierDaemonStartByProfile(c *gin.Context) {
 }
 
 func (s *Server) startEasyTierDaemon(c *gin.Context, profileID string, cfg store.EasyTierConfig) {
+	if easyTierHostMutationAbort(c) {
+		return
+	}
 	if s.easyTierDaemons == nil || s.easyTierCfg == nil || !s.easyTierCfg.DaemonEnabled {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "EasyTier daemon mode is not enabled"})
 		return
@@ -284,10 +289,7 @@ func (s *Server) startEasyTierDaemon(c *gin.Context, profileID string, cfg store
 	}
 	ctx, cancel := context.WithTimeout(c.Request.Context(), easyTierStartTimeout)
 	defer cancel()
-	if err := s.easyTierDaemons.Start(ctx, profileID, easytier.DaemonConfig{
-		BinaryPath: daemonPath,
-		EnvFile:    envPath,
-	}); err != nil {
+	if err := s.easyTierDaemons.Start(ctx, profileID, easytier.NewDaemonConfig(daemonPath, envPath)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -310,6 +312,9 @@ func (s *Server) postEasyTierDaemonStopByProfile(c *gin.Context) {
 }
 
 func (s *Server) stopEasyTierDaemon(c *gin.Context, profileID string) {
+	if easyTierHostMutationAbort(c) {
+		return
+	}
 	if s.easyTierDaemons == nil || s.easyTierCfg == nil || !s.easyTierCfg.DaemonEnabled {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "EasyTier daemon mode is not enabled"})
 		return
@@ -343,6 +348,9 @@ func (s *Server) postEasyTierDaemonRestartByProfile(c *gin.Context) {
 }
 
 func (s *Server) restartEasyTierDaemonAPI(c *gin.Context, profileID string, cfg store.EasyTierConfig) {
+	if easyTierHostMutationAbort(c) {
+		return
+	}
 	if s.easyTierDaemons == nil || s.easyTierCfg == nil || !s.easyTierCfg.DaemonEnabled {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "EasyTier daemon mode is not enabled"})
 		return
@@ -378,10 +386,7 @@ func (s *Server) restartEasyTierDaemonAPI(c *gin.Context, profileID string, cfg 
 			return
 		}
 	}
-	if err := s.easyTierDaemons.Restart(ctx, profileID, easytier.DaemonConfig{
-		BinaryPath: daemonPath,
-		EnvFile:    envPath,
-	}); err != nil {
+	if err := s.easyTierDaemons.Restart(ctx, profileID, easytier.NewDaemonConfig(daemonPath, envPath)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "restart: " + err.Error()})
 		return
 	}
@@ -404,6 +409,16 @@ func (s *Server) getEasyTierDaemonStatusByProfile(c *gin.Context) {
 }
 
 func (s *Server) respondEasyTierDaemonStatus(c *gin.Context, profileID string) {
+	if !easytier.EasyTierSupportedOnHost() {
+		daemonMode := s.easyTierCfg != nil && s.easyTierCfg.DaemonEnabled
+		c.JSON(http.StatusOK, gin.H{
+			"running":                 false,
+			"daemon_mode_enabled":     daemonMode,
+			"easytier_host_supported": false,
+			"hint":                    easytier.HostNotSupportedHint,
+		})
+		return
+	}
 	if s.easyTierDaemons == nil || s.easyTierCfg == nil || !s.easyTierCfg.DaemonEnabled {
 		c.JSON(http.StatusOK, gin.H{
 			"running":             false,
@@ -443,6 +458,10 @@ func (s *Server) getEasyTierDaemonLogsByProfile(c *gin.Context) {
 }
 
 func (s *Server) respondEasyTierDaemonLogs(c *gin.Context, profileID string) {
+	if !easytier.EasyTierSupportedOnHost() {
+		c.JSON(http.StatusOK, gin.H{"logs": "", "hint": easytier.HostNotSupportedHint})
+		return
+	}
 	if s.easyTierDaemons == nil || s.easyTierCfg == nil || !s.easyTierCfg.DaemonEnabled {
 		c.JSON(http.StatusOK, gin.H{"logs": ""})
 		return
@@ -471,6 +490,9 @@ func (s *Server) postEasyTierDaemonReleasePortByProfile(c *gin.Context) {
 }
 
 func (s *Server) releaseEasyTierPorts(c *gin.Context, cfg store.EasyTierConfig) {
+	if easyTierHostMutationAbort(c) {
+		return
+	}
 	ports, err := buildEasyTierReleasePortList(cfg)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -511,16 +533,13 @@ func (s *Server) releaseEasyTierPorts(c *gin.Context, cfg store.EasyTierConfig) 
 }
 
 func (s *Server) restartEasyTierDaemon(profileID, envPath, imageTag string) {
-	if s.easyTierDaemons == nil || s.easyTierCfg == nil || !s.easyTierCfg.DaemonEnabled {
+	if !easytier.EasyTierSupportedOnHost() || s.easyTierDaemons == nil || s.easyTierCfg == nil || !s.easyTierCfg.DaemonEnabled {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), easyTierRestartTimeout)
 	defer cancel()
 	daemonPath := s.resolveDaemonPath(ctx, imageTag)
-	_ = s.easyTierDaemons.Restart(ctx, profileID, easytier.DaemonConfig{
-		BinaryPath: daemonPath,
-		EnvFile:    envPath,
-	})
+	_ = s.easyTierDaemons.Restart(ctx, profileID, easytier.NewDaemonConfig(daemonPath, envPath))
 }
 
 func (s *Server) getEasyTierStatusByProfile(c *gin.Context) {
@@ -541,15 +560,6 @@ func (s *Server) getEasyTierVersionByProfile(c *gin.Context) {
 	s.respondEasyTierVersion(c, profile.Config)
 }
 
-func (s *Server) getEasyTierVPNPortalByProfile(c *gin.Context) {
-	profile, err := s.getEasyTierProfileByID(strings.TrimSpace(c.Param("id")))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	s.respondEasyTierVPNPortal(c, profile.Config)
-}
-
 func (s *Server) getEasyTierStatuses(c *gin.Context) {
 	ps, err := s.store.GetEasyTierProfiles()
 	if err != nil {
@@ -557,6 +567,29 @@ func (s *Server) getEasyTierStatuses(c *gin.Context) {
 		return
 	}
 	out := make([]gin.H, 0, len(ps.Profiles))
+	if !easytier.EasyTierSupportedOnHost() {
+		for _, p := range ps.Profiles {
+			rpc := p.Config.RPCPortal
+			if strings.TrimSpace(rpc) == "" {
+				rpc = config.DefaultEasyTierRPC
+			}
+			out = append(out, gin.H{
+				"id":         p.ID,
+				"name":       p.Name,
+				"rpc_portal": rpc,
+				"ok":         false,
+				"error":      "unsupported host",
+				"hint":       easytier.HostNotSupportedHint,
+			})
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"profiles":                  out,
+			"active_profile_id":         ps.ActiveProfileID,
+			"easytier_host_supported":   false,
+			"host_unsupported_hint":     easytier.HostNotSupportedHint,
+		})
+		return
+	}
 	for _, p := range ps.Profiles {
 		rpc := p.Config.RPCPortal
 		if strings.TrimSpace(rpc) == "" {
@@ -581,7 +614,80 @@ func (s *Server) getEasyTierStatuses(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"profiles": out, "active_profile_id": ps.ActiveProfileID})
 }
 
+var easyTierCLIRawTargets = map[string]struct{}{
+	"peer":    {},
+	"route":   {},
+	"node":    {},
+	"version": {},
+}
+
+// getEasyTierCLIOutput 返回 easytier-cli 子命令原始输出（peer/route/node/version），便于对照官方文档排查在网状态。
+func (s *Server) getEasyTierCLIOutput(c *gin.Context) {
+	profile, err := s.getCurrentEasyTierProfile()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	s.respondEasyTierCLIOutput(c, profile.Config)
+}
+
+func (s *Server) getEasyTierCLIOutputByProfile(c *gin.Context) {
+	profile, err := s.getEasyTierProfileByID(strings.TrimSpace(c.Param("id")))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	s.respondEasyTierCLIOutput(c, profile.Config)
+}
+
+func (s *Server) respondEasyTierCLIOutput(c *gin.Context, cfg store.EasyTierConfig) {
+	if !easytier.EasyTierSupportedOnHost() {
+		c.JSON(http.StatusOK, gin.H{
+			"ok":   false,
+			"hint": easytier.HostNotSupportedHint,
+		})
+		return
+	}
+	target := strings.TrimSpace(c.Query("target"))
+	if _, ok := easyTierCLIRawTargets[target]; !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "target must be one of: peer, route, node, version"})
+		return
+	}
+	rpc := cfg.RPCPortal
+	if strings.TrimSpace(rpc) == "" {
+		rpc = config.DefaultEasyTierRPC
+	}
+	client := easytier.NewClient("", rpc)
+	stdout, stderr, err := client.CLISubcommandRaw(target)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"ok":     false,
+			"target": target,
+			"stdout": stdout,
+			"stderr": stderr,
+			"error":  err.Error(),
+		})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"ok":     true,
+		"target": target,
+		"stdout": stdout,
+		"stderr": stderr,
+	})
+}
+
 func (s *Server) respondEasyTierStatus(c *gin.Context, cfg store.EasyTierConfig) {
+	if !easytier.EasyTierSupportedOnHost() {
+		c.JSON(http.StatusOK, gin.H{
+			"ok":     false,
+			"error":  "unsupported host",
+			"hint":   easytier.HostNotSupportedHint,
+			"peers":  []interface{}{},
+			"routes": []interface{}{},
+		})
+		return
+	}
 	rpc := cfg.RPCPortal
 	if strings.TrimSpace(rpc) == "" {
 		rpc = config.DefaultEasyTierRPC
@@ -602,6 +708,14 @@ func (s *Server) respondEasyTierStatus(c *gin.Context, cfg store.EasyTierConfig)
 }
 
 func (s *Server) respondEasyTierVersion(c *gin.Context, cfg store.EasyTierConfig) {
+	if !easytier.EasyTierSupportedOnHost() {
+		c.JSON(http.StatusOK, gin.H{
+			"version": "",
+			"error":   "unsupported host",
+			"hint":    easytier.HostNotSupportedHint,
+		})
+		return
+	}
 	rpc := cfg.RPCPortal
 	if strings.TrimSpace(rpc) == "" {
 		rpc = config.DefaultEasyTierRPC
@@ -617,24 +731,6 @@ func (s *Server) respondEasyTierVersion(c *gin.Context, cfg store.EasyTierConfig
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"version": v})
-}
-
-func (s *Server) respondEasyTierVPNPortal(c *gin.Context, cfg store.EasyTierConfig) {
-	rpc := cfg.RPCPortal
-	if strings.TrimSpace(rpc) == "" {
-		rpc = config.DefaultEasyTierRPC
-	}
-	client := easytier.NewClient("", rpc)
-	text, err := client.VPNPortalConfig()
-	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"config": "",
-			"error":  err.Error(),
-			"hint":   "请确认已在 EasyTier 中启用 VPN Portal，守护进程已运行，并且 easytier-cli 已安装且在 SKYLINK 进程可见的 PATH 中。",
-		})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"config": text})
 }
 
 func (s *Server) getCurrentEasyTierProfile() (store.EasyTierProfile, error) {
@@ -717,9 +813,10 @@ func (s *Server) validateEasyTierProfileConflicts(profileID string, cfg store.Ea
 func (s *Server) getEasyTierPlatform(c *gin.Context) {
 	p := easytier.CurrentPlatform()
 	c.JSON(http.StatusOK, gin.H{
-		"os":    p.OS,
-		"arch":  p.Arch,
-		"label": p.OS + "/" + p.Arch,
+		"os":                      p.OS,
+		"arch":                    p.Arch,
+		"label":                   p.OS + "/" + p.Arch,
+		"easytier_host_supported": easytier.EasyTierSupportedOnHost(),
 	})
 }
 
@@ -739,8 +836,9 @@ func (s *Server) getEasyTierPlatforms(c *gin.Context) {
 	current := easytier.CurrentPlatform()
 	currentLabel := current.OS + "/" + current.Arch
 	c.JSON(http.StatusOK, gin.H{
-		"platforms": platforms,
-		"current":   gin.H{"os": current.OS, "arch": current.Arch, "label": currentLabel},
+		"platforms":               platforms,
+		"current":                 gin.H{"os": current.OS, "arch": current.Arch, "label": currentLabel},
+		"easytier_host_supported": easytier.EasyTierSupportedOnHost(),
 	})
 }
 
@@ -785,6 +883,9 @@ func (s *Server) getEasyTierRuntimeInstalled(c *gin.Context) {
 
 // postEasyTierRuntimeInstall 为指定或当前平台下载 easytier-daemon 运行时；body 可选 os、arch
 func (s *Server) postEasyTierRuntimeInstall(c *gin.Context) {
+	if easyTierHostMutationAbort(c) {
+		return
+	}
 	if s.easyTierRuntime == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "runtime downloader is not configured"})
 		return
@@ -810,6 +911,12 @@ func (s *Server) postEasyTierRuntimeInstall(c *gin.Context) {
 	if body.OS != "" && body.Arch != "" {
 		platform = easytier.Platform{OS: strings.TrimSpace(body.OS), Arch: strings.TrimSpace(body.Arch)}
 	}
+	if !easytier.IsSupportedRuntimePlatform(platform) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "仅支持为 Windows amd64 / Windows arm64 下载 EasyTier 运行时",
+		})
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), easyTierInstallTimeout)
 	defer cancel()
@@ -834,6 +941,9 @@ func (s *Server) postEasyTierRuntimeInstall(c *gin.Context) {
 
 // deleteEasyTierRuntime 移除已下载的指定版本+平台运行时
 func (s *Server) deleteEasyTierRuntime(c *gin.Context) {
+	if easyTierHostMutationAbort(c) {
+		return
+	}
 	if s.easyTierRuntime == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "runtime downloader is not configured"})
 		return
@@ -855,6 +965,10 @@ func (s *Server) deleteEasyTierRuntime(c *gin.Context) {
 		return
 	}
 	platform := easytier.Platform{OS: osVal, Arch: arch}
+	if !easytier.IsSupportedRuntimePlatform(platform) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "仅支持移除 Windows amd64 / arm64 运行时"})
+		return
+	}
 	if err := s.easyTierRuntime.RemoveDaemon(version, platform); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

@@ -8,7 +8,6 @@ export const ROUTE_PATHS = {
   cloudflareCenter: '/cloudflare-center',
   cloudflareLegacy: '/cloudflare',
   ddnsLegacy: '/ddns',
-  easyTier: '/easytier',
   fileServices: '/file-services',
   windowsTools: '/windows-tools',
   webDevLegacy: '/webdev',

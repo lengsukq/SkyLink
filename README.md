@@ -202,18 +202,10 @@ easytier:
 - **扩展配置项（与官方配置的对应关系）**：
   - `hostname` → `ET_HOSTNAME`：节点主机名（可选）。
   - `external-node` → `ET_EXTERNAL_NODE`：公网发现节点地址，如 `tcp://public.easytier.cn:11010`，仅用于协助发现公网节点，非必填。
-  - `proxy-networks` → `ET_PROXY_NETWORKS`：子网代理 CIDR 列表，如 `10.0.0.0/24`，可用逗号或换行分隔多个，对应 EasyTier `vpn_portal_config.proxy_networks`。
+  - `proxy-networks` → `ET_PROXY_NETWORKS`：子网代理 CIDR 列表，如 `10.0.0.0/24`，可用逗号或换行分隔多个，对应 EasyTier 配置中的 `proxy_networks`。
   - `dhcp` → `ET_DHCP=true|false`：启用后 IPv4 可留空，由 EasyTier 自动分配。
-  - `vpn_portal` → `ET_VPN_PORTAL`：VPN Portal（WireGuard）配置地址，如 `wg://0.0.0.0:11013/10.14.14.0/24`。
 
 > 注意：**`虚拟 IPv4 地址（ET_IPV4）` 与 `DHCP（ET_DHCP）` 互斥**。启用 DHCP 时 SkyLink 会清空并禁用 IPv4 输入；保存配置时后端也会丢弃静态 IPv4，避免二者同时存在造成歧义或冲突。
-
-### WireGuard / VPN Portal
-
-1. 在 EasyTier 页高级配置中填写 `VPN Portal（WireGuard）`，例如 `wg://0.0.0.0:11013/10.14.14.0/24`，并保存配置。
-2. 通过 EasyTier 页的“重启 Daemon”按钮或重新启动守护进程，使 VPN Portal 配置生效。
-3. EasyTier 运行正常后，在管理界面 **EasyTier** 页的「WireGuard 客户端配置（VPN Portal）」卡片点击「获取配置」，即可看到 `easytier-cli vpn-portal` 返回的 WireGuard 客户端配置文本。
-4. 点击「复制」按钮，将配置导入本地 WireGuard 客户端即可接入 mesh 网络。
 
 ### 重启与升级
 
@@ -237,9 +229,6 @@ easytier:
   - 检查 `SKYLINK_EASYTIER_RPC` 或 UI 中的 RPC 地址是否指向正确的守护进程地址（默认 `127.0.0.1:15888`）。
   - 确认 EasyTier 守护进程已启动，且监听地址与 SkyLink 中配置一致。
   - 确认 `easytier-cli` 已安装并在 SkyLink 进程可见的 PATH 中，可以在同一环境下执行 `easytier-cli --version` 验证。
-- **WireGuard 配置为空或获取失败**：
-  - 确认在 EasyTier 高级配置中已填入正确的 `VPN Portal（WireGuard）` 地址，并已重启守护进程。
-  - 确认 EasyTier 已成功加入目标网络（状态页上应有 peers / 路由）。
 - **守护进程日志出现 `tun error Operation not permitted` / `Operation not permitted (os error 1)`**：
   - 这是 **TUN 虚拟网卡权限不足** 导致，端口监听可能正常，但创建/打开 TUN 会失败并退出。
   - 裸机/源码运行时：需要用更高权限运行拉起 EasyTier 的进程（例如开发环境下用 `sudo -E make dev` 或 `sudo -E go run ./cmd/server ...`）。

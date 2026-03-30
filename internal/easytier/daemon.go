@@ -20,6 +20,7 @@ const daemonLogMaxBytes = 64 * 1024
 
 // DaemonConfig 描述 easytier-daemon 进程启动所需的最小配置。
 // 该结构仅关心二进制路径与 env 文件路径，具体网络参数仍由 env 文件提供。
+// WorkDir 非空时作为子进程的工作目录，通常应为二进制所在目录（与官方「在安装/解压目录下启动」一致）。
 type DaemonConfig struct {
 	BinaryPath string
 	EnvFile    string
@@ -98,8 +99,12 @@ func (m *daemonManager) Start(ctx context.Context, cfg DaemonConfig) error {
 	if cfg.BinaryPath == "" {
 		cfg.BinaryPath = DefaultDaemonBinary()
 	}
+	cfg.BinaryPath = normalizeDaemonBinaryPath(cfg.BinaryPath)
 	if cfg.BinaryPath == "" {
 		return errors.New("easytier-daemon binary path is empty")
+	}
+	if cfg.WorkDir == "" {
+		cfg.WorkDir = ResolveDaemonWorkDir(cfg.BinaryPath)
 	}
 
 	if m.cmd != nil && m.cmd.Process != nil {
@@ -116,6 +121,7 @@ func (m *daemonManager) Start(ctx context.Context, cfg DaemonConfig) error {
 
 	// 使用 exec.Command 而非 CommandContext：守护进程需长期运行，不能随请求 context 取消而被杀掉。
 	cmd := exec.Command(cfg.BinaryPath)
+	setDaemonProcAttr(cmd)
 	cmd.Env = append(os.Environ(), env...)
 	if cfg.WorkDir != "" {
 		cmd.Dir = cfg.WorkDir
@@ -144,15 +150,20 @@ func (m *daemonManager) Start(ctx context.Context, cfg DaemonConfig) error {
 	go func() { _, _ = io.Copy(m.logBuf, stdoutPipe) }()
 	go func() { _, _ = io.Copy(m.logBuf, stderrPipe) }()
 
-	// 监控退出，更新状态。
+	// 监控退出，更新状态（进程秒退时 LastStartErr 便于排查缺 DLL、配置错误等）。
 	go func() {
-		cmd.Wait()
+		waitErr := cmd.Wait()
 		m.mu.Lock()
 		defer m.mu.Unlock()
 		if m.cmd == cmd {
 			m.state.Running = false
 			m.state.PID = 0
 			m.state.BinaryPath = ""
+			if waitErr != nil {
+				m.state.LastStartErr = waitErr.Error()
+			} else if ps := cmd.ProcessState; ps != nil && !ps.Success() {
+				m.state.LastStartErr = fmt.Sprintf("process exited with code %d", ps.ExitCode())
+			}
 		}
 	}()
 
@@ -213,6 +224,67 @@ func DefaultDaemonBinary() string {
 		return "easytier-core.exe"
 	}
 	return "easytier-core"
+}
+
+// ResolveDaemonWorkDir 返回启动 easytier-core 时应设置的进程工作目录，等价于先 cd 到解压/安装目录再执行。
+// 对 RuntimeDownloader 写入的绝对路径，为二进制所在目录；对仅在 PATH 中的名称，为 LookPath 解析到的目录。
+// 无法解析时返回空字符串，子进程将继承 SkyLink 的当前工作目录。
+func ResolveDaemonWorkDir(binaryPath string) string {
+	p := strings.TrimSpace(binaryPath)
+	if p == "" {
+		return ""
+	}
+	resolved := p
+	if !filepath.IsAbs(p) {
+		hasSep := strings.Contains(p, string(filepath.Separator)) || strings.Contains(p, "/")
+		if hasSep {
+			abs, err := filepath.Abs(p)
+			if err != nil {
+				return ""
+			}
+			resolved = abs
+		} else {
+			lp, err := exec.LookPath(p)
+			if err != nil {
+				return ""
+			}
+			resolved = lp
+		}
+	}
+	return filepath.Dir(filepath.Clean(resolved))
+}
+
+// normalizeDaemonBinaryPath 将含目录的相对路径转为绝对路径，便于 Windows 上 fork/exec：
+// 子进程的可执行文件路径是相对于 SkyLink 进程当前工作目录解析的，而非 cmd.Dir；服务/快捷方式启动时 CWD 常不是项目目录，会导致「已下载却找不到路径」。
+// 仅文件名（依赖 PATH）时保持原样。
+func normalizeDaemonBinaryPath(p string) string {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return p
+	}
+	if filepath.IsAbs(p) {
+		return filepath.Clean(p)
+	}
+	clean := filepath.Clean(p)
+	if !strings.ContainsRune(clean, filepath.Separator) && !strings.Contains(clean, "/") {
+		return clean
+	}
+	abs, err := filepath.Abs(clean)
+	if err != nil {
+		return clean
+	}
+	return filepath.Clean(abs)
+}
+
+// NewDaemonConfig 构造守护进程配置，并自动设置 WorkDir=ResolveDaemonWorkDir(binaryPath)。
+// BinaryPath 会经 normalizeDaemonBinaryPath 处理，避免相对路径在 exec 时依赖不可预期的 CWD。
+func NewDaemonConfig(binaryPath, envFile string) DaemonConfig {
+	norm := normalizeDaemonBinaryPath(binaryPath)
+	return DaemonConfig{
+		BinaryPath: norm,
+		EnvFile:    envFile,
+		WorkDir:    ResolveDaemonWorkDir(norm),
+	}
 }
 
 // buildEnvFromFile 将简单的 KEY=VALUE env 文件解析为环境变量切片。

@@ -25,7 +25,6 @@ const (
 	KeyETExternalNode  = "et.external_node"
 	KeyETProxyNetworks = "et.proxy_networks"
 	KeyETDHCP          = "et.dhcp"
-	KeyETVPNPortal     = "et.vpn_portal"
 	KeyETAutostart     = "et.autostart_on_startup"
 	KeyETProfiles      = "et.profiles"
 	KeyETActiveProfile = "et.active_profile_id"
@@ -50,7 +49,6 @@ type EasyTierConfig struct {
 	ExternalNode  string `json:"external_node"`
 	ProxyNetworks string `json:"proxy_networks"`
 	DHCP          bool   `json:"dhcp"`
-	VPNPortal     string `json:"vpn_portal"`
 }
 
 type EasyTierProfile struct {
@@ -309,11 +307,6 @@ func (s *Store) WriteEasyTierEnv(path string, c *EasyTierConfig) error {
 	} else {
 		b.WriteString("false\n")
 	}
-	if c.VPNPortal != "" {
-		b.WriteString("ET_VPN_PORTAL=")
-		b.WriteString(escapeEnvValue(c.VPNPortal))
-		b.WriteString("\n")
-	}
 	// 容器内 EasyTier 需监听 RPC 地址；优先使用配置中的 RPCPortal，空则回退默认
 	rpc := c.RPCPortal
 	if rpc == "" {
@@ -409,9 +402,6 @@ func (s *Store) loadLegacyEasyTierConfig() (EasyTierConfig, error) {
 	} else {
 		c.DHCP = v == "1" || v == "true"
 	}
-	if c.VPNPortal, err = s.GetSetting(KeyETVPNPortal); err != nil {
-		return EasyTierConfig{}, err
-	}
 	normalizeEasyTierConfig(&c)
 	return c, nil
 }
@@ -462,7 +452,7 @@ func (s *Store) syncLegacyEasyTierKeys(c EasyTierConfig) error {
 	if err := s.SetSetting(KeyETDHCP, dhcp); err != nil {
 		return err
 	}
-	return s.SetSetting(KeyETVPNPortal, c.VPNPortal)
+	return nil
 }
 
 func normalizeEasyTierConfig(c *EasyTierConfig) {

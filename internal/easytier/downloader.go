@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -322,105 +323,154 @@ func (d *RuntimeDownloader) downloadDaemon(ctx context.Context, version string, 
 		return "", fmt.Errorf("download easytier-daemon: %s", resp.Status)
 	}
 
-	if strings.HasSuffix(strings.ToLower(assetURL), ".zip") {
-		if err := d.downloadAndExtractZip(resp.Body, platform, targetPath); err != nil {
-			return "", err
-		}
-		return targetPath, nil
+	// 先完整下载到临时文件，再按类型解压或落盘，避免 URL 带 query 时漏判 zip、或把压缩包误当裸二进制写入。
+	partPath := targetPath + ".part"
+	if err := writeHTTPBodyToFile(resp.Body, partPath); err != nil {
+		_ = os.Remove(partPath)
+		return "", fmt.Errorf("download to temp: %w", err)
 	}
 
-	tmpPath := targetPath + ".tmp"
-	f, err := os.Create(tmpPath)
-	if err != nil {
+	if err := d.installDaemonFromDownloadedPart(partPath, assetURL, platform, targetPath); err != nil {
+		_ = os.Remove(partPath)
+		_ = os.Remove(targetPath)
 		return "", err
 	}
-	if _, err := io.Copy(f, resp.Body); err != nil {
-		_ = f.Close()
-		_ = os.Remove(tmpPath)
-		return "", err
-	}
-	if err := f.Close(); err != nil {
-		_ = os.Remove(tmpPath)
-		return "", err
-	}
-
-	if platform.OS != "windows" {
-		if err := os.Chmod(tmpPath, 0o755); err != nil {
-			_ = os.Remove(tmpPath)
-			return "", err
-		}
-	}
-
-	if err := os.Rename(tmpPath, targetPath); err != nil {
-		_ = os.Remove(tmpPath)
-		return "", err
-	}
-
 	return targetPath, nil
 }
 
-// downloadAndExtractZip reads a zip from r, finds easytier-core or easytier-core.exe, and writes it to targetPath.
-func (d *RuntimeDownloader) downloadAndExtractZip(r io.Reader, platform Platform, targetPath string) error {
-	tmpZip, err := os.CreateTemp(filepath.Dir(targetPath), "easytier-*.zip")
+func writeHTTPBodyToFile(r io.Reader, path string) error {
+	f, err := os.Create(path)
 	if err != nil {
-		return fmt.Errorf("create temp zip: %w", err)
-	}
-	tmpZipPath := tmpZip.Name()
-	defer func() { _ = os.Remove(tmpZipPath) }()
-
-	if _, err := io.Copy(tmpZip, r); err != nil {
-		_ = tmpZip.Close()
-		return fmt.Errorf("download zip: %w", err)
-	}
-	if err := tmpZip.Close(); err != nil {
 		return err
 	}
+	if _, err := io.Copy(f, r); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
+}
 
-	zr, err := zip.OpenReader(tmpZipPath)
+// fileLooksLikeZip 通过魔数判断是否为 zip（本地文件头 PK\x03\x04 等）。
+func fileLooksLikeZip(path string) bool {
+	f, err := os.Open(path)
 	if err != nil {
-		return fmt.Errorf("open zip: %w", err)
+		return false
 	}
-	defer zr.Close()
+	defer f.Close()
+	var hdr [4]byte
+	if _, err := io.ReadFull(f, hdr[:]); err != nil {
+		return false
+	}
+	return hdr[0] == 'P' && hdr[1] == 'K'
+}
 
-	wantName := "easytier-core"
-	if platform.OS == "windows" {
-		wantName = "easytier-core.exe"
+func assetURLPathLooksLikeZip(assetURL string) bool {
+	u, err := url.Parse(assetURL)
+	if err != nil || u.Path == "" {
+		return false
 	}
-	var found *zip.File
-	for _, f := range zr.File {
-		base := filepath.Base(f.Name)
-		if base == wantName || strings.ToLower(base) == "easytier-core.exe" || strings.ToLower(base) == "easytier-core" {
-			found = f
-			break
+	return strings.HasSuffix(strings.ToLower(u.Path), ".zip")
+}
+
+// installDaemonFromDownloadedPart 下载完成后立即处理：zip 则解压出 easytier-core；否则将整文件作为可执行文件落盘。
+func (d *RuntimeDownloader) installDaemonFromDownloadedPart(partPath, assetURL string, platform Platform, targetPath string) error {
+	byMagic := fileLooksLikeZip(partPath)
+	byURL := assetURLPathLooksLikeZip(assetURL)
+	if byMagic || byURL {
+		err := d.extractZipFileToBinary(partPath, platform, targetPath)
+		if err == nil {
+			_ = os.Remove(partPath)
+			return nil
 		}
-	}
-	if found == nil {
-		return fmt.Errorf("zip does not contain %s", wantName)
-	}
-
-	rc, err := found.Open()
-	if err != nil {
-		return fmt.Errorf("open zip entry: %w", err)
-	}
-	defer rc.Close()
-
-	out, err := os.Create(targetPath)
-	if err != nil {
-		return fmt.Errorf("create target: %w", err)
-	}
-	if _, err := io.Copy(out, rc); err != nil {
-		_ = out.Close()
-		_ = os.Remove(targetPath)
-		return fmt.Errorf("extract: %w", err)
-	}
-	if err := out.Close(); err != nil {
-		_ = os.Remove(targetPath)
-		return err
+		// 魔数为 zip 或已解压出部分文件：视为致命错误
+		if byMagic {
+			return fmt.Errorf("extract zip: %w", err)
+		}
+		// 仅 URL 路径像 zip、魔数不像时，回退为裸二进制（兼容异常响应体）
 	}
 
 	if platform.OS != "windows" {
+		if err := os.Chmod(partPath, 0o755); err != nil {
+			return err
+		}
+	}
+	if err := os.Rename(partPath, targetPath); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (d *RuntimeDownloader) extractZipFileToBinary(zipPath string, platform Platform, targetPath string) error {
+	zr, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return err
+	}
+	defer zr.Close()
+	return d.extractEasyTierCoreFromZipReader(&zr.Reader, platform, targetPath)
+}
+
+// extractEasyTierCoreFromZipReader 将 zip 内文件解压到 targetPath 所在目录。
+// Windows 官方包除 easytier-core.exe 外常含 wintun.dll、Packet.dll 等，必须与 exe 同目录，否则进程会立即退出。
+// 策略：把所有非目录条目按文件名扁平解压到同一目录（仅用 filepath.Base，避免 zip slip）。
+func (d *RuntimeDownloader) extractEasyTierCoreFromZipReader(zr *zip.Reader, platform Platform, targetPath string) error {
+	destDir := filepath.Dir(targetPath)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return fmt.Errorf("mkdir extract dir: %w", err)
+	}
+
+	wantCore := "easytier-core"
+	if platform.OS == "windows" {
+		wantCore = "easytier-core.exe"
+	}
+
+	var sawCore bool
+	for _, f := range zr.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		if strings.Contains(f.Name, "..") {
+			continue
+		}
+		base := filepath.Base(f.Name)
+		if base == "" || base == "." {
+			continue
+		}
+		outPath := filepath.Join(destDir, base)
+		rc, err := f.Open()
+		if err != nil {
+			return fmt.Errorf("open zip entry %q: %w", f.Name, err)
+		}
+		out, err := os.Create(outPath)
+		if err != nil {
+			_ = rc.Close()
+			return fmt.Errorf("create %s: %w", outPath, err)
+		}
+		_, copyErr := io.Copy(out, rc)
+		_ = rc.Close()
+		if closeErr := out.Close(); closeErr != nil && copyErr == nil {
+			copyErr = closeErr
+		}
+		if copyErr != nil {
+			_ = os.Remove(outPath)
+			return fmt.Errorf("extract %s: %w", base, copyErr)
+		}
+		lower := strings.ToLower(base)
+		if base == wantCore || lower == "easytier-core.exe" || lower == "easytier-core" {
+			sawCore = true
+		}
+		if platform.OS != "windows" && (lower == "easytier-core" || lower == "easytier-cli") {
+			_ = os.Chmod(outPath, 0o755)
+		}
+	}
+
+	if !sawCore {
+		return fmt.Errorf("zip does not contain %s", wantCore)
+	}
+	if _, err := os.Stat(targetPath); err != nil {
+		return fmt.Errorf("after extract, missing %s: %w", filepath.Base(targetPath), err)
+	}
+	if platform.OS != "windows" {
 		if err := os.Chmod(targetPath, 0o755); err != nil {
-			_ = os.Remove(targetPath)
 			return err
 		}
 	}
@@ -536,21 +586,28 @@ type PlatformLabel struct {
 	Label string `json:"label"`
 }
 
-// supportedPlatforms 与 GitHub EasyTier releases 的 CLI zip 资产一致（easytier-<os>-<arch>-*.zip）
+// supportedPlatforms：本系统集成仅支持 Windows 运行时（与官方 easytier-windows-* zip 一致）。
 var supportedPlatforms = []Platform{
-	{OS: "linux", Arch: "amd64"},
-	{OS: "linux", Arch: "arm64"},
-	{OS: "darwin", Arch: "amd64"},
-	{OS: "darwin", Arch: "arm64"},
 	{OS: "windows", Arch: "amd64"},
 	{OS: "windows", Arch: "arm64"},
+}
+
+// IsSupportedRuntimePlatform 是否为本产品允许的下载/缓存维度（仅 Windows）。
+func IsSupportedRuntimePlatform(p Platform) bool {
+	o := strings.ToLower(strings.TrimSpace(p.OS))
+	a := strings.ToLower(strings.TrimSpace(p.Arch))
+	return o == "windows" && (a == "amd64" || a == "arm64")
 }
 
 // SupportedPlatformsWithLabels 返回支持的平台列表（供版本下拉与下载用）
 func SupportedPlatformsWithLabels() []PlatformLabel {
 	out := make([]PlatformLabel, 0, len(supportedPlatforms))
 	for _, p := range supportedPlatforms {
-		out = append(out, PlatformLabel{OS: p.OS, Arch: p.Arch, Label: p.OS + "/" + p.Arch})
+		label := "Windows amd64"
+		if p.Arch == "arm64" {
+			label = "Windows arm64"
+		}
+		out = append(out, PlatformLabel{OS: p.OS, Arch: p.Arch, Label: label})
 	}
 	return out
 }

@@ -47,9 +47,7 @@ const routes = [
       },
       {
         path: 'easytier',
-        name: 'EasyTier',
-        component: () => import('../views/EasyTier.vue'),
-        meta: { navLabel: 'EasyTier', navOrder: 40 },
+        redirect: () => ({ name: 'WindowsTools', query: { tab: 'easytier' } }),
       },
       {
         path: 'file-services',
