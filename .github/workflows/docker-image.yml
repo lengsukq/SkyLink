@@ -79,12 +79,12 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
-          cache-dependency-path: web/package.json
+          cache-dependency-path: web/package-lock.json
 
       - name: Build frontend (for embed)
         working-directory: web
         run: |
-          npm install
+          npm ci
           npm run build
           cd ..
           mkdir -p static/web/dist

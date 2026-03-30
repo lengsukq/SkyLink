@@ -98,6 +98,7 @@ go build -o skylink ./cmd/server
 - `npm run build`：生产构建
 - `npm run preview`：预览构建结果
 - `npm run test`：Vitest
+- `npm run test:coverage`：Vitest 覆盖率报告（v8）
 - `npm run type-check`：TS/Vue 类型检查
 - `npm run check:all`：完整检查（类型、测试、构建）
 
@@ -215,8 +216,13 @@ services:
 
 质量门工作流（`.github/workflows/quality-gates.yml`）：
 
-- PR 与 `main` 分支提交会执行后端 `go test ./...`
-- 前端执行 `npm run type-check`、`npm run test`、`npm run build`
+- PR 与 `main` 分支提交会执行后端 `go test` 覆盖率采集与阈值检查
+- 前端执行 `npm run type-check`、`npm run test`、`npm run test:coverage`、`npm run build`
+- 会上传前后端覆盖率产物，便于回归对比
+
+## 贡献与维护
+
+- 贡献与质量门细则见 [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## 许可证
 

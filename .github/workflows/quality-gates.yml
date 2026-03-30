@@ -18,8 +18,21 @@ jobs:
         with:
           go-version: "1.21"
           cache: true
-      - name: Run Go tests
-        run: go test ./...
+      - name: Run Go tests with coverage
+        run: go test -covermode=atomic -coverprofile=coverage.out ./...
+      - name: Enforce Go coverage threshold
+        run: |
+          go tool cover -func=coverage.out | tee coverage.txt
+          total=$(awk '/^total:/{print substr($3, 1, length($3)-1)}' coverage.txt)
+          echo "Total Go coverage: ${total}%"
+          awk -v cov="$total" 'BEGIN { if (cov+0 < 35) { exit 1 } }'
+      - name: Upload Go coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage
+          path: |
+            coverage.out
+            coverage.txt
 
   frontend-quality:
     name: Frontend type/test/build
@@ -42,5 +55,15 @@ jobs:
         run: npm run type-check
       - name: Unit tests
         run: npm run test
+      - name: Frontend coverage
+        run: npm run test:coverage
+      - name: Enforce frontend coverage threshold
+        run: |
+          node -e "const fs=require('fs');const p='coverage/coverage-summary.json';const d=JSON.parse(fs.readFileSync(p,'utf8'));const s=d.total.statements.pct;console.log('Frontend statement coverage:',s+'%');if(s<35){process.exit(1)}"
+      - name: Upload frontend coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-coverage
+          path: web/coverage
       - name: Build
         run: npm run build
