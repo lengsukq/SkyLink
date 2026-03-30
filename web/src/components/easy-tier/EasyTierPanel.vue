@@ -101,6 +101,10 @@
           </span>
         </n-space>
         <n-divider v-if="daemonModeEnabled" style="margin: 12px 0 8px 0">守护进程日志</n-divider>
+        <p v-if="daemonModeEnabled && easytierHostSupported" class="status-hint" style="margin: 0 0 8px 0">
+          默认在弹出的独立控制台中查看 easytier 节点界面；此处仅在有日志时显示。若需把输出同步到本页，请设置环境变量
+          <code>SKYLINK_EASYTIER_DAEMON_CAPTURE_OUTPUT=1</code> 并重启 SkyLink。
+        </p>
         <n-space v-if="daemonModeEnabled" vertical size="small">
           <n-button size="tiny" :disabled="!easytierHostSupported" :loading="daemonLogsLoading" @click="loadDaemonLogs">刷新</n-button>
           <pre class="daemon-logs">{{ daemonLogs || '（暂无日志，启动守护进程后点击刷新）' }}</pre>
@@ -163,7 +167,7 @@
         <pre v-if="cliRawStderr" class="cli-raw-block cli-raw-err">{{ cliRawStderr }}</pre>
       </template>
       <p v-else-if="easytierHostSupported && !cliRawLoading && !cliRawMetaError" class="status-hint" style="margin-top: 8px">
-        选择子命令后点击「获取」。需守护进程已运行且本机可执行 <code>easytier-cli</code>。
+        选择子命令后点击「获取」。需守护进程已运行；CLI 与 core 同目录（推荐）或可在 PATH 中找到 <code>easytier-cli</code>。
       </p>
     </n-card>
 

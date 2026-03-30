@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -17,9 +19,11 @@ import (
 type Client struct {
 	cliPath   string
 	rpcPortal string
+	workDir   string // 非空时 runCLI 优先使用该目录（与 NewRPCClient / RuntimePaths 配合）
 }
 
-// NewClient 创建 EasyTier 客户端；rpcPortal 如 "easytier:15888"
+// NewClient 创建 EasyTier 客户端；rpcPortal 如 "easytier:15888"。
+// 若已知 easytier-core 路径，优先使用 NewRPCClient(ResolveRuntimePaths(core), rpc)。
 func NewClient(cliPath, rpcPortal string) *Client {
 	if cliPath == "" {
 		cliPath = CLICommand
@@ -31,7 +35,16 @@ func NewClient(cliPath, rpcPortal string) *Client {
 func (c *Client) runCLI(args ...string) (stdout, stderr []byte, err error) {
 	cmd := exec.Command(c.cliPath, args...)
 	if c.rpcPortal != "" {
-		cmd.Env = append(cmd.Env, "ET_RPC_PORTAL="+c.rpcPortal)
+		cmd.Env = append(os.Environ(), "ET_RPC_PORTAL="+c.rpcPortal)
+	} else {
+		cmd.Env = os.Environ()
+	}
+	if wd := strings.TrimSpace(c.workDir); wd != "" {
+		cmd.Dir = filepath.Clean(wd)
+	} else if dir := filepath.Dir(c.cliPath); dir != "" && dir != "." {
+		if fi, err := os.Stat(c.cliPath); err == nil && !fi.IsDir() {
+			cmd.Dir = filepath.Clean(dir)
+		}
 	}
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout = &outBuf

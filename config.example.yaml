@@ -23,5 +23,6 @@ easytier:
   daemon_path: ""
   # 自动下载的 EasyTier 守护进程缓存目录；通常保持默认即可。
   runtime_dir: "./data/easytier-bin"
+  # Windows 环境变量 SKYLINK_EASYTIER_DAEMON_CAPTURE_OUTPUT=1：子进程不弹控制台、日志进 Web「守护进程日志」；不设则默认弹出独立控制台展示 easytier 节点界面。
   # 可选：当需要与外部进程（如独立运行的 EasyTier 或容器）共享配置时，写入 env 文件的路径。
   # env_file_path: "./data/easytier.env"

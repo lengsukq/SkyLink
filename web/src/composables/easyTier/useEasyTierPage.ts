@@ -542,7 +542,7 @@ async function loadStatus() {
     lastStatusUpdated.value = new Date().toLocaleTimeString()
   } catch (_) {
     status.error = '无法获取 EasyTier 状态，可能未启用或 RPC 地址不可达。'
-    status.hint = '请确认 EasyTier 守护进程已运行、RPC 地址正确，且 easytier-cli 已安装并在 PATH 中。'
+    status.hint = '请确认 EasyTier 守护进程已运行、RPC 地址正确；CLI 应与 easytier-core 同目录（下载完整包）或已在 PATH 中。'
     status.peers = []
     status.routes = []
     lastStatusUpdated.value = new Date().toLocaleTimeString()

@@ -590,6 +590,7 @@ func (s *Server) getEasyTierStatuses(c *gin.Context) {
 		})
 		return
 	}
+	ctx := c.Request.Context()
 	for _, p := range ps.Profiles {
 		rpc := p.Config.RPCPortal
 		if strings.TrimSpace(rpc) == "" {
@@ -600,7 +601,7 @@ func (s *Server) getEasyTierStatuses(c *gin.Context) {
 			"name":       p.Name,
 			"rpc_portal": rpc,
 		}
-		client := easytier.NewClient("", rpc)
+		client := s.easyTierRPCClient(ctx, p.Config)
 		status, err := client.Status()
 		if err != nil {
 			item["ok"] = false
@@ -653,11 +654,7 @@ func (s *Server) respondEasyTierCLIOutput(c *gin.Context, cfg store.EasyTierConf
 		c.JSON(http.StatusBadRequest, gin.H{"error": "target must be one of: peer, route, node, version"})
 		return
 	}
-	rpc := cfg.RPCPortal
-	if strings.TrimSpace(rpc) == "" {
-		rpc = config.DefaultEasyTierRPC
-	}
-	client := easytier.NewClient("", rpc)
+	client := s.easyTierRPCClient(c.Request.Context(), cfg)
 	stdout, stderr, err := client.CLISubcommandRaw(target)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
@@ -688,17 +685,13 @@ func (s *Server) respondEasyTierStatus(c *gin.Context, cfg store.EasyTierConfig)
 		})
 		return
 	}
-	rpc := cfg.RPCPortal
-	if strings.TrimSpace(rpc) == "" {
-		rpc = config.DefaultEasyTierRPC
-	}
-	client := easytier.NewClient("", rpc)
+	client := s.easyTierRPCClient(c.Request.Context(), cfg)
 	st, err := client.Status()
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"ok":     false,
 			"error":  err.Error(),
-			"hint":   "请确认 EasyTier 守护进程已运行，RPC 地址可达，并且 easytier-cli 已安装且在 SKYLINK 进程可见的 PATH 中。",
+			"hint":   "请确认 EasyTier 守护进程已运行、RPC 地址可达，且 easytier-cli 与 easytier-core 同目录（或由 RuntimeDownloader 下载完整包）或已在 PATH 中。",
 			"peers":  []interface{}{},
 			"routes": []interface{}{},
 		})
@@ -716,17 +709,13 @@ func (s *Server) respondEasyTierVersion(c *gin.Context, cfg store.EasyTierConfig
 		})
 		return
 	}
-	rpc := cfg.RPCPortal
-	if strings.TrimSpace(rpc) == "" {
-		rpc = config.DefaultEasyTierRPC
-	}
-	client := easytier.NewClient("", rpc)
+	client := s.easyTierRPCClient(c.Request.Context(), cfg)
 	v, err := client.Version()
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"version": "",
 			"error":   err.Error(),
-			"hint":    "请确认 EasyTier 守护进程已运行，RPC 地址可达，并且 easytier-cli 已安装且在 SKYLINK 进程可见的 PATH 中。",
+			"hint":    "请确认 EasyTier 守护进程已运行、RPC 地址可达，且 easytier-cli 与 easytier-core 同目录或已在 PATH 中。",
 		})
 		return
 	}

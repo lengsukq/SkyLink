@@ -4,4 +4,4 @@ package easytier
 
 import "os/exec"
 
-func setDaemonProcAttr(cmd *exec.Cmd) {}
+func configureDaemonCmd(cmd *exec.Cmd, _ bool) {}

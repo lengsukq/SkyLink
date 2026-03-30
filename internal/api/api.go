@@ -442,6 +442,17 @@ func (s *Server) resolveDaemonPath(ctx context.Context, imageTag string) string 
 	return easytier.DefaultDaemonBinary()
 }
 
+// easyTierRPCClient 根据配置版本解析 easytier 运行时目录（core / 同目录 cli / WorkDir），并返回用于访问守护进程 RPC 的 CLI 客户端。
+func (s *Server) easyTierRPCClient(ctx context.Context, cfg store.EasyTierConfig) *easytier.Client {
+	core := s.resolveDaemonPath(ctx, cfg.ImageTag)
+	paths := easytier.ResolveRuntimePaths(core)
+	rpc := cfg.RPCPortal
+	if strings.TrimSpace(rpc) == "" {
+		rpc = config.DefaultEasyTierRPC
+	}
+	return easytier.NewRPCClient(paths, rpc)
+}
+
 // isExplicitDaemonPath 为 true 表示配置中显式指定了可执行文件路径（绝对路径或含目录），
 // 而非仅默认二进制名 "easytier-core"（此时应优先使用 RuntimeDownloader 已下载的二进制）。
 func isExplicitDaemonPath(p string) bool {
