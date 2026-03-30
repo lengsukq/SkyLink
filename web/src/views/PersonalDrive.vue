@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="drive-page">
     <page-header
       title="个人网盘"
       description="Windows 专属：管理员创建账号并分配本机目录/空间；账号通过用户名+密码登录个人网盘。"
@@ -59,6 +59,10 @@ async function copyUrl(s: string) {
 </script>
 
 <style scoped>
+.drive-page {
+  padding-top: 4px;
+}
+
 .drive-links-alert {
   max-width: 960px;
 }
