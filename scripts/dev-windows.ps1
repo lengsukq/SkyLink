@@ -3,7 +3,7 @@
 # Run: dev-windows.cmd
 #   (default)         npm run build + sync static/web + Air + Vite on :5173
 #   -SkipWebBuild      skip npm build/sync (faster; use Vite-only UI at http://localhost:5173)
-#   -SkipNpmInstall    skip npm install in sync script when node_modules exists; Vite window still ensures deps for dev
+#   -SkipNpmInstall    skip npm ci in sync script when node_modules exists; Vite window still ensures deps for dev
 #   -NoVite             only Air (single window); open http://127.0.0.1:19080/ for embedded UI
 
 param(
@@ -51,11 +51,11 @@ if (-not $SkipWebBuild) {
 
 if (-not $NoVite) {
     if (-not $SkipNpmInstall -and -not (Test-Path (Join-Path $webDir "node_modules"))) {
-        Write-Host "[web] node_modules missing, running npm install..." -ForegroundColor Yellow
+        Write-Host "[web] node_modules missing, running npm ci..." -ForegroundColor Yellow
         Push-Location $webDir
         try {
-            npm.cmd install
-            if ($LASTEXITCODE -ne 0) { throw "npm install failed, exit code $LASTEXITCODE" }
+            npm.cmd ci
+            if ($LASTEXITCODE -ne 0) { throw "npm ci failed, exit code $LASTEXITCODE" }
         }
         finally {
             Pop-Location

@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { driveUserIndexRebuild, driveUserIndexStatus } from '../../api/driveUserClient'
+import { getApiErrorMessage } from '../../utils/apiError'
 
 type UseDriveIndexSyncOptions = {
   refreshWithToast: (reset: boolean) => Promise<void>
@@ -45,8 +46,8 @@ export function useDriveIndexSync(options: UseDriveIndexSyncOptions) {
         options.notifySuccess('同步完成', '列表已与本地目录对齐')
       }
       await options.refreshWithToast(true)
-    } catch (e: any) {
-      options.notifyError('同步失败', e?.response?.data?.error || e?.message || String(e))
+    } catch (e: unknown) {
+      options.notifyError('同步失败', getApiErrorMessage(e))
     } finally {
       reindexing.value = false
     }

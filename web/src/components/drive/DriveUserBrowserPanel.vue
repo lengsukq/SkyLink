@@ -205,7 +205,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, h, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   NAlert,
@@ -238,8 +238,11 @@ import { useDriveActions } from '../../composables/drive/useDriveActions'
 import { useDriveModals } from '../../composables/drive/useDriveModals'
 import { useDriveUploadQueue } from '../../composables/drive/useDriveUploadQueue'
 import { useDriveIndexSync } from '../../composables/drive/useDriveIndexSync'
+import { useDriveDropZone } from '../../composables/drive/useDriveDropZone'
+import { useDriveHotkeys } from '../../composables/drive/useDriveHotkeys'
 import { useMatchMedia } from '../../composables/useMatchMedia'
 import { isEntryPreviewable } from '../../utils/drivePreview'
+import { getApiErrorMessage } from '../../utils/apiError'
 import DrivePreviewModal from './DrivePreviewModal.vue'
 import DriveDetailsSidebar from './fm/DriveDetailsSidebar.vue'
 import DriveGridView from './fm/DriveGridView.vue'
@@ -266,8 +269,6 @@ const { reindexing, syncLocalIndex } = useDriveIndexSync({
   notifySuccess,
   notifyError,
 })
-const dragOver = ref(false)
-let dragDepth = 0
 
 const rowKey = (row: DriveEntry) => row.path
 
@@ -391,7 +392,7 @@ async function refreshWithToast(reset: boolean) {
     if (reset) selectedPaths.value = []
     await refresh(reset)
   } catch (e: any) {
-    notifyError('查询失败', e?.response?.data?.error || e?.message || String(e))
+    notifyError('查询失败', getApiErrorMessage(e))
   }
 }
 
@@ -448,32 +449,6 @@ async function onFilePicked(e: Event) {
   enqueueFiles(files)
 }
 
-function onDragEnter() {
-  dragDepth += 1
-  dragOver.value = true
-}
-
-function onDragLeave() {
-  dragDepth -= 1
-  if (dragDepth <= 0) {
-    dragDepth = 0
-    dragOver.value = false
-  }
-}
-
-function onDragOver() {
-  dragOver.value = true
-}
-
-function onDropFiles(e: DragEvent) {
-  dragDepth = 0
-  dragOver.value = false
-  if (!canUpload.value) return
-  const dt = e.dataTransfer
-  if (!dt?.files?.length) return
-  enqueueFiles(Array.from(dt.files))
-}
-
 function onCategory(v: any) {
   activeCategory.value = v
   refreshWithToast(true)
@@ -507,6 +482,11 @@ async function runBatchDelete() {
 const { queue, enqueueFiles } = useDriveUploadQueue({
   getTargetDir: () => path.value,
   onSettled: () => refreshWithToast(true),
+})
+
+const { dragOver, onDragEnter, onDragLeave, onDragOver, onDropFiles } = useDriveDropZone({
+  canUpload,
+  enqueueFiles,
 })
 
 function logout() {
@@ -590,8 +570,8 @@ function cut(item: DriveEntry) {
 async function pasteCut() {
   try {
     await pasteCutRaw()
-  } catch (e: any) {
-    notifyError('移动失败', e?.response?.data?.error || e?.message || String(e))
+  } catch (e: unknown) {
+    notifyError('移动失败', getApiErrorMessage(e))
   }
 }
 
@@ -604,8 +584,8 @@ async function confirmRename() {
     const nextName = renameValue.value.trim()
     await confirmRenameRaw()
     if (nextName) notifySuccess('已重命名', nextName)
-  } catch (e: any) {
-    notifyError('重命名失败', e?.response?.data?.error || e?.message || String(e))
+  } catch (e: unknown) {
+    notifyError('重命名失败', getApiErrorMessage(e))
   }
 }
 
@@ -614,51 +594,8 @@ async function confirmMkdir() {
     const name = mkdirValue.value.trim()
     await confirmMkdirRaw()
     if (name) notifySuccess('已创建', name)
-  } catch (e: any) {
-    notifyError('创建失败', e?.response?.data?.error || e?.message || String(e))
-  }
-}
-
-function parentDirPath(p: string): string {
-  const t = p.replace(/\\/g, '/').replace(/\/+$/, '')
-  const i = t.lastIndexOf('/')
-  return i <= 0 ? '' : t.slice(0, i)
-}
-
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!target || !(target instanceof HTMLElement)) return false
-  const tag = target.tagName
-  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
-  return target.isContentEditable
-}
-
-function onGlobalKeydown(e: KeyboardEvent) {
-  if (isTypingTarget(e.target)) return
-
-  if (e.key === 'Escape' && previewOpen.value) {
-    previewOpen.value = false
-    e.preventDefault()
-    return
-  }
-
-  if (e.key === 'Enter' && selectedItem.value) {
-    openOrEnter(selectedItem.value)
-    e.preventDefault()
-    return
-  }
-
-  if (e.key === 'Backspace' && !recursive.value) {
-    const p = (path.value || '').trim()
-    if (p) {
-      e.preventDefault()
-      goTo(parentDirPath(p))
-    }
-    return
-  }
-
-  if (e.key === 'Delete' && selectedPaths.value.length) {
-    e.preventDefault()
-    confirmBatchDelete()
+  } catch (e: unknown) {
+    notifyError('创建失败', getApiErrorMessage(e))
   }
 }
 
@@ -666,12 +603,15 @@ watch(isNarrow, (narrow) => {
   if (!narrow) detailsDrawerOpen.value = false
 })
 
-onMounted(() => {
-  window.addEventListener('keydown', onGlobalKeydown)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('keydown', onGlobalKeydown)
+useDriveHotkeys({
+  previewOpen,
+  selectedItem,
+  selectedPaths,
+  recursive,
+  path,
+  openOrEnter,
+  goTo,
+  confirmBatchDelete,
 })
 </script>
 

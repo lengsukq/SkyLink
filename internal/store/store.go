@@ -148,7 +148,7 @@ type Store struct {
 // New 打开或创建数据库并执行迁移
 func New(dbPath string) (*Store, error) {
 	dir := filepath.Dir(dbPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, defaultDirectoryMode); err != nil {
 		return nil, fmt.Errorf("mkdir for db: %w", err)
 	}
 	db, err := sql.Open("sqlite", dbPath)

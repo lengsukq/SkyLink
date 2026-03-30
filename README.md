@@ -66,7 +66,7 @@ make dev
 
 ```bash
 cd web
-npm install
+npm ci
 npm run dev
 ```
 
@@ -208,11 +208,13 @@ services:
 
 ## CI/CD 与发布
 
-仓库包含 GitHub Actions 工作流（`.github/workflows/docker-image.yml`）：
+仓库包含 GitHub Actions 发布工作流（`.github/workflows/docker-image.yml`）：
 
 - 支持按 tag（`v*`）或手动触发构建
 - 推送多架构镜像到 GHCR / Docker Hub
 - 生成 Release 附件（Linux `amd64/arm64` 二进制与校验和）
+
+详细职责拆分与维护约定见 [docs/ci.md](docs/ci.md)。
 
 质量门工作流（`.github/workflows/quality-gates.yml`）：
 

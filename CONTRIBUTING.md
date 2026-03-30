@@ -45,3 +45,4 @@ npm run build
 
 - 前端安装仅使用 `npm ci`，不得在 workflow 中混用 `npm install`。
 - 质量门见 `.github/workflows/quality-gates.yml`，发布流程见 `.github/workflows/docker-image.yml`。
+- CI 维护约定（职责边界、脚本抽取规则）见 `docs/ci.md`。

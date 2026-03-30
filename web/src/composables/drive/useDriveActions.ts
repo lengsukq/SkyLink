@@ -3,6 +3,7 @@ import type { DriveEntry, PreviewKind } from '../../types/drive'
 import { driveUserDelete, driveUserDownloadBlob } from '../../api/driveUserClient'
 import { copyToClipboard } from '../../utils/clipboard'
 import { previewKindForEntry } from '../../utils/drivePreview'
+import { getApiErrorMessage } from '../../utils/apiError'
 
 export function useDriveActions(opts: {
   refresh: (reset: boolean) => Promise<void>
@@ -41,8 +42,8 @@ export function useDriveActions(opts: {
       a.download = row.name
       a.click()
       URL.revokeObjectURL(url)
-    } catch (e: any) {
-      opts.notifyError('下载失败', e?.response?.data?.error || e?.message || String(e))
+    } catch (e: unknown) {
+      opts.notifyError('下载失败', getApiErrorMessage(e))
     }
   }
 
@@ -51,8 +52,8 @@ export function useDriveActions(opts: {
       await driveUserDelete(row.path)
       opts.notifySuccess('已删除', row.name)
       await opts.refresh(true)
-    } catch (e: any) {
-      opts.notifyError('删除失败', e?.response?.data?.error || e?.message || String(e))
+    } catch (e: unknown) {
+      opts.notifyError('删除失败', getApiErrorMessage(e))
     }
   }
 
@@ -65,8 +66,8 @@ export function useDriveActions(opts: {
       }
       opts.notifySuccess('已删除', `共 ${targets.length} 项`)
       await opts.refresh(true)
-    } catch (e: any) {
-      opts.notifyError('批量删除失败', e?.response?.data?.error || e?.message || String(e))
+    } catch (e: unknown) {
+      opts.notifyError('批量删除失败', getApiErrorMessage(e))
     }
   }
 

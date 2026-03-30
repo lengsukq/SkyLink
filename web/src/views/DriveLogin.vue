@@ -55,6 +55,7 @@ import { STORAGE_KEYS } from '../constants/storage'
 import { ROUTE_PATHS } from '../constants/routes'
 import SkyLinkLogo from '../components/SkyLinkLogo.vue'
 import { notifyError, notifySuccess } from '../ui/notify'
+import { getApiErrorMessage } from '../utils/apiError'
 
 const router = useRouter()
 const loading = ref(false)
@@ -83,8 +84,8 @@ async function login() {
     localStorage.setItem(STORAGE_KEYS.driveUserToken, token)
     notifySuccess('登录成功', '欢迎使用个人网盘')
     router.push(ROUTE_PATHS.drivePortal)
-  } catch (e: any) {
-    notifyError('登录失败', e?.response?.data?.error || e?.message || String(e))
+  } catch (e: unknown) {
+    notifyError('登录失败', getApiErrorMessage(e))
   } finally {
     loading.value = false
   }

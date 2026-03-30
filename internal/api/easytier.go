@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"os/exec"
 	"path/filepath"
@@ -105,7 +104,11 @@ func (s *Server) getEasyTierStatus(c *gin.Context) {
 
 // getEasyTierVersion 返回当前 EasyTier 运行版本
 func (s *Server) getEasyTierVersion(c *gin.Context) {
-	profile, _ := s.getCurrentEasyTierProfile()
+	profile, err := s.getCurrentEasyTierProfile()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 	s.respondEasyTierVersion(c, profile.Config)
 }
 
@@ -617,82 +620,6 @@ func (s *Server) respondEasyTierVersion(c *gin.Context, cfg store.EasyTierConfig
 	c.JSON(http.StatusOK, gin.H{"version": v})
 }
 
-func (s *Server) getCurrentEasyTierProfile() (store.EasyTierProfile, error) {
-	ps, err := s.store.GetEasyTierProfiles()
-	if err != nil {
-		return store.EasyTierProfile{}, err
-	}
-	for _, p := range ps.Profiles {
-		if p.ID == ps.ActiveProfileID {
-			return p, nil
-		}
-	}
-	if len(ps.Profiles) > 0 {
-		return ps.Profiles[0], nil
-	}
-	return store.EasyTierProfile{
-		ID:     store.DefaultEasyTierProfileID,
-		Name:   store.DefaultEasyTierProfileName,
-		Config: store.EasyTierConfig{},
-	}, nil
-}
-
-func (s *Server) getEasyTierProfileByID(profileID string) (store.EasyTierProfile, error) {
-	ps, err := s.store.GetEasyTierProfiles()
-	if err != nil {
-		return store.EasyTierProfile{}, err
-	}
-	for _, p := range ps.Profiles {
-		if p.ID == profileID {
-			return p, nil
-		}
-	}
-	return store.EasyTierProfile{}, fmt.Errorf("easytier profile %q not found", profileID)
-}
-
-func (s *Server) resolveEasyTierEnvPath(profileID, configured string) string {
-	if strings.TrimSpace(configured) != "" {
-		return configured
-	}
-	if s.easyTierEnvPath == "" {
-		return ""
-	}
-	ext := filepath.Ext(s.easyTierEnvPath)
-	base := strings.TrimSuffix(s.easyTierEnvPath, ext)
-	if strings.TrimSpace(profileID) == "" || profileID == store.DefaultEasyTierProfileID {
-		return s.easyTierEnvPath
-	}
-	return base + "." + profileID + ext
-}
-
-func (s *Server) validateEasyTierProfileConflicts(profileID string, cfg store.EasyTierConfig, envPath string) error {
-	ps, err := s.store.GetEasyTierProfiles()
-	if err != nil {
-		return err
-	}
-	currentRPC := strings.TrimSpace(cfg.RPCPortal)
-	if currentRPC == "" {
-		currentRPC = config.DefaultEasyTierRPC
-	}
-	for _, p := range ps.Profiles {
-		if p.ID == profileID {
-			continue
-		}
-		otherRPC := strings.TrimSpace(p.Config.RPCPortal)
-		if otherRPC == "" {
-			otherRPC = config.DefaultEasyTierRPC
-		}
-		if currentRPC == otherRPC {
-			return fmt.Errorf("rpc_portal conflict: profile %q already uses %s", p.Name, otherRPC)
-		}
-		otherEnvPath := s.resolveEasyTierEnvPath(p.ID, p.Config.EnvFilePath)
-		if strings.TrimSpace(envPath) != "" && strings.EqualFold(filepath.Clean(otherEnvPath), filepath.Clean(envPath)) {
-			return fmt.Errorf("env_file_path conflict: profile %q already uses %s", p.Name, otherEnvPath)
-		}
-	}
-	return nil
-}
-
 // getEasyTierPlatform 返回后端运行平台信息（OS/Arch）
 func (s *Server) getEasyTierPlatform(c *gin.Context) {
 	p := easytier.CurrentPlatform()
@@ -706,7 +633,7 @@ func (s *Server) getEasyTierPlatform(c *gin.Context) {
 
 // getEasyTierReleases 返回 GitHub EasyTier releases 列表，供版本下拉使用
 func (s *Server) getEasyTierReleases(c *gin.Context) {
-	list, err := easytier.FetchReleases(30)
+	list, err := easytier.FetchReleases(easyTierReleaseFetchLimit)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"releases": []easytier.Release{}, "error": err.Error()})
 		return

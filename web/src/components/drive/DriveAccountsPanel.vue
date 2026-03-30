@@ -141,6 +141,7 @@ import api from '../../api/client'
 import { notifyError, notifySuccess } from '../../ui/notify'
 import { formatBytes, formatBytesAsG, gbToBytes, bytesToGbForInput } from '../../utils/storage'
 import { useDriveIssuedPassword } from '../../composables/drive/useDriveIssuedPassword'
+import { getApiErrorMessage } from '../../utils/apiError'
 
 type DriveAccount = {
   id: number
@@ -328,8 +329,8 @@ async function create() {
     showCreate.value = false
     createForm.value = { username: '', password: '', root_path: '', quota_g: 0, enabled: true }
     await refresh()
-  } catch (e: any) {
-    notifyError('创建失败', e?.response?.data?.error || e?.message || String(e))
+  } catch (e: unknown) {
+    notifyError('创建失败', getApiErrorMessage(e))
   } finally {
     creating.value = false
   }
@@ -364,8 +365,8 @@ async function saveEdit() {
     notifySuccess('已保存', '账号信息已更新')
     showEdit.value = false
     await refresh()
-  } catch (e: any) {
-    notifyError('保存失败', e?.response?.data?.error || e?.message || String(e))
+  } catch (e: unknown) {
+    notifyError('保存失败', getApiErrorMessage(e))
   } finally {
     savingEdit.value = false
   }
@@ -393,8 +394,8 @@ async function submitResetPwd() {
       notifySuccess('已重置', '登录密码已更新')
     }
     await refresh()
-  } catch (e: any) {
-    notifyError('重置失败', e?.response?.data?.error || e?.message || String(e))
+  } catch (e: unknown) {
+    notifyError('重置失败', getApiErrorMessage(e))
   } finally {
     resettingPwd.value = false
   }
@@ -405,8 +406,8 @@ async function recountUsed(id: number) {
     await api.post(`/drive/accounts/${id}/recount-used`)
     notifySuccess('已提交', '用量已重新计算')
     await refresh()
-  } catch (e: any) {
-    notifyError('操作失败', e?.response?.data?.error || e?.message || String(e))
+  } catch (e: unknown) {
+    notifyError('操作失败', getApiErrorMessage(e))
   }
 }
 
@@ -415,8 +416,8 @@ async function remove(id: number) {
     await api.delete(`/drive/accounts/${id}`)
     notifySuccess('删除成功', '子账号已删除')
     await refresh()
-  } catch (e: any) {
-    notifyError('删除失败', e?.response?.data?.error || e?.message || String(e))
+  } catch (e: unknown) {
+    notifyError('删除失败', getApiErrorMessage(e))
   }
 }
 

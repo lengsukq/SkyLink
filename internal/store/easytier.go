@@ -1,13 +1,9 @@
 package store
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 )
 
@@ -34,33 +30,6 @@ const (
 	DefaultEasyTierProfileID   = "default"
 	DefaultEasyTierProfileName = "默认配置"
 )
-
-// EasyTierConfig 供 API 和 env 文件使用的配置结构
-type EasyTierConfig struct {
-	NetworkName   string `json:"network_name"`
-	NetworkSecret string `json:"network_secret"`
-	Peers         string `json:"peers"`
-	IPv4          string `json:"ipv4"`
-	Enabled       bool   `json:"enabled"`
-	ImageTag      string `json:"image_tag"`
-	RPCPortal     string `json:"rpc_portal"`
-	EnvFilePath   string `json:"env_file_path"`
-	Hostname      string `json:"hostname"`
-	ExternalNode  string `json:"external_node"`
-	ProxyNetworks string `json:"proxy_networks"`
-	DHCP          bool   `json:"dhcp"`
-}
-
-type EasyTierProfile struct {
-	ID     string         `json:"id"`
-	Name   string         `json:"name"`
-	Config EasyTierConfig `json:"config"`
-}
-
-type EasyTierProfiles struct {
-	Profiles        []EasyTierProfile `json:"profiles"`
-	ActiveProfileID string            `json:"active_profile_id"`
-}
 
 // GetEasyTierConfig 从 settings 表读取 EasyTier 配置
 func (s *Store) GetEasyTierConfig() (*EasyTierConfig, error) {
@@ -250,89 +219,6 @@ func (s *Store) SetEasyTierAutostart(enabled bool) error {
 		value = "1"
 	}
 	return s.SetSetting(KeyETAutostart, value)
-}
-
-// WriteEasyTierEnv 将当前 EasyTier 配置写入 env 文件。
-// 该功能用于在需要时将配置共享给外部进程（例如独立运行的 EasyTier 或容器），
-// 对于由 SkyLink 直接拉起并管理的守护进程模式并非必需。
-func (s *Store) WriteEasyTierEnv(path string, c *EasyTierConfig) error {
-	if path == "" || c == nil {
-		return nil
-	}
-	var b bytes.Buffer
-	if c.ImageTag != "" {
-		b.WriteString("EASYTIER_IMAGE_TAG=")
-		b.WriteString(escapeEnvValue(c.ImageTag))
-		b.WriteString("\n")
-	}
-	if c.NetworkName != "" {
-		b.WriteString("ET_NETWORK_NAME=")
-		b.WriteString(escapeEnvValue(c.NetworkName))
-		b.WriteString("\n")
-	}
-	if c.NetworkSecret != "" {
-		b.WriteString("ET_NETWORK_SECRET=")
-		b.WriteString(escapeEnvValue(c.NetworkSecret))
-		b.WriteString("\n")
-	}
-	if c.Peers != "" {
-		b.WriteString("ET_PEERS=")
-		b.WriteString(escapeEnvValue(c.Peers))
-		b.WriteString("\n")
-	}
-	if c.IPv4 != "" {
-		b.WriteString("ET_IPV4=")
-		b.WriteString(escapeEnvValue(c.IPv4))
-		b.WriteString("\n")
-	}
-	if c.Hostname != "" {
-		b.WriteString("ET_HOSTNAME=")
-		b.WriteString(escapeEnvValue(c.Hostname))
-		b.WriteString("\n")
-	}
-	if c.ExternalNode != "" {
-		b.WriteString("ET_EXTERNAL_NODE=")
-		b.WriteString(escapeEnvValue(c.ExternalNode))
-		b.WriteString("\n")
-	}
-	if c.ProxyNetworks != "" {
-		b.WriteString("ET_PROXY_NETWORKS=")
-		b.WriteString(escapeEnvValue(c.ProxyNetworks))
-		b.WriteString("\n")
-	}
-	// easytier-core --dhcp 仅接受 true/false，不能为 1/0
-	b.WriteString("ET_DHCP=")
-	if c.DHCP {
-		b.WriteString("true\n")
-	} else {
-		b.WriteString("false\n")
-	}
-	// 容器内 EasyTier 需监听 RPC 地址；优先使用配置中的 RPCPortal，空则回退默认
-	rpc := c.RPCPortal
-	if rpc == "" {
-		rpc = "0.0.0.0:15888"
-	}
-	b.WriteString("ET_RPC_PORTAL=")
-	b.WriteString(escapeEnvValue(rpc))
-	b.WriteString("\n")
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("mkdir for easytier env: %w", err)
-	}
-	return os.WriteFile(path, b.Bytes(), 0600)
-}
-
-func escapeEnvValue(v string) string {
-	if v == "" {
-		return ""
-	}
-	// 若包含空格或特殊字符则加引号
-	for _, c := range v {
-		if c == ' ' || c == '"' || c == '\'' || c == '\n' || c == '\\' {
-			return strconv.Quote(v)
-		}
-	}
-	return v
 }
 
 func (s *Store) migrateLegacyEasyTierProfiles(active string) (*EasyTierProfiles, error) {

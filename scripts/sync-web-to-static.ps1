@@ -25,11 +25,11 @@ if (-not (Test-Cmd "npm")) {
 
 if (-not $SkipNpmInstall) {
     if (-not (Test-Path (Join-Path $webDir "node_modules"))) {
-        Write-Host "[sync-web] node_modules missing, running npm install..." -ForegroundColor Yellow
+        Write-Host "[sync-web] node_modules missing, running npm ci..." -ForegroundColor Yellow
         Push-Location $webDir
         try {
-            npm.cmd install
-            if ($LASTEXITCODE -ne 0) { throw "npm install failed, exit code $LASTEXITCODE" }
+            npm.cmd ci
+            if ($LASTEXITCODE -ne 0) { throw "npm ci failed, exit code $LASTEXITCODE" }
         }
         finally {
             Pop-Location
