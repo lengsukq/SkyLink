@@ -160,6 +160,34 @@
         <n-button size="small" :loading="cliRawLoading" :disabled="!easytierHostSupported" @click="loadCliRaw">获取</n-button>
       </n-space>
       <div v-if="cliRawMetaError" class="status-error" style="margin-top: 10px">{{ cliRawMetaError }}</div>
+      <div v-if="parsedCliPeerRows.length" class="peer-modern-view">
+        <div class="peer-modern-stats">
+          <div class="peer-stat-card">
+            <div class="peer-stat-label">总节点数</div>
+            <div class="peer-stat-value">{{ cliPeerSummary.total }}</div>
+          </div>
+          <div class="peer-stat-card">
+            <div class="peer-stat-label">P2P</div>
+            <div class="peer-stat-value peer-stat-success">{{ cliPeerSummary.p2p }}</div>
+          </div>
+          <div class="peer-stat-card">
+            <div class="peer-stat-label">Relay</div>
+            <div class="peer-stat-value peer-stat-warn">{{ cliPeerSummary.relay }}</div>
+          </div>
+          <div class="peer-stat-card">
+            <div class="peer-stat-label">平均延迟</div>
+            <div class="peer-stat-value">{{ cliPeerSummary.avgLatencyMs == null ? '—' : `${cliPeerSummary.avgLatencyMs} ms` }}</div>
+          </div>
+        </div>
+        <div class="status-table-wrapper">
+          <n-data-table
+            :columns="cliPeerColumns"
+            :data="parsedCliPeerRows"
+            :bordered="false"
+            size="small"
+          />
+        </div>
+      </div>
       <template v-if="cliRawStdout || cliRawStderr">
         <div v-if="cliRawStdout" class="cli-raw-label">stdout</div>
         <pre v-if="cliRawStdout" class="cli-raw-block">{{ cliRawStdout }}</pre>
@@ -413,6 +441,9 @@ const {
   cliRawMetaError,
   cliRawLoading,
   loadCliRaw,
+  parsedCliPeerRows,
+  cliPeerSummary,
+  cliPeerColumns,
   activeProfileId,
   newProfileName,
   profileOptions,
@@ -533,5 +564,36 @@ const {
 }
 .cli-raw-err {
   background: rgba(239, 68, 68, 0.08);
+}
+.peer-modern-view {
+  margin-top: 12px;
+}
+.peer-modern-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.peer-stat-card {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--n-color-target, #f8fafc);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+}
+.peer-stat-label {
+  font-size: 12px;
+  color: #64748b;
+}
+.peer-stat-value {
+  margin-top: 4px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #0f172a;
+}
+.peer-stat-success {
+  color: #059669;
+}
+.peer-stat-warn {
+  color: #d97706;
 }
 </style>

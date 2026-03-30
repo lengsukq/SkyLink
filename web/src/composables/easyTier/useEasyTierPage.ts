@@ -2,9 +2,10 @@
  * EasyTier 状态与操作（由 Windows 工具页中的 EasyTierPanel 使用）。
  */
 import { ref, reactive, onMounted, h, computed } from 'vue'
-import { NButton } from 'naive-ui'
+import { NButton, NTag } from 'naive-ui'
 import api from '../../api/client'
 import { notifySuccess, notifyError } from '../../ui/notify'
+import { parseCliPeerTable, getCliPeerSummary } from './cliRawParser'
 export function useEasyTierPage() {
 const formRef = ref(null)
 const DEFAULT_PUBLIC_SERVER = 'tcp://public.easytier.cn:11010'
@@ -88,6 +89,12 @@ const cliRawLoading = ref(false)
 const profiles = ref<any[]>([])
 const activeProfileId = ref('')
 const newProfileName = ref('')
+const parsedCliPeerRows = computed(() => {
+  if (cliRawTarget.value !== 'peer') return []
+  if (!cliRawStdout.value) return []
+  return parseCliPeerTable(cliRawStdout.value)
+})
+const cliPeerSummary = computed(() => getCliPeerSummary(parsedCliPeerRows.value))
 
 const profileOptions = computed(() => profiles.value.map((p) => ({ label: p.name || p.id, value: p.id })))
 const canDeleteProfile = computed(() => profiles.value.length > 1 && !!activeProfileId.value)
@@ -211,6 +218,34 @@ const installedListColumns = [
   },
 ]
 
+const cliPeerColumns = [
+  { title: 'IPv4', key: 'ipv4', width: 130, ellipsis: true },
+  { title: '节点', key: 'hostname', ellipsis: true },
+  {
+    title: '链路',
+    key: 'cost',
+    width: 95,
+    render: (row: any) =>
+      h(
+        NTag,
+        { size: 'small', type: row.cost.toLowerCase().includes('relay') ? 'warning' : 'success', bordered: false },
+        { default: () => row.cost }
+      ),
+  },
+  {
+    title: '延迟',
+    key: 'latencyText',
+    width: 90,
+    render: (row: any) =>
+      row.latencyMs == null ? '—' : h(NTag, { size: 'small', type: row.latencyMs > 300 ? 'warning' : 'info', bordered: false }, { default: () => `${row.latencyMs.toFixed(2)} ms` }),
+  },
+  { title: '丢包', key: 'loss', width: 80 },
+  { title: '流量(RX/TX)', key: 'traffic', width: 150, render: (row: any) => `${row.rx} / ${row.tx}` },
+  { title: 'Tunnel', key: 'tunnel', width: 90, ellipsis: true },
+  { title: 'NAT', key: 'nat', width: 140, ellipsis: true },
+  { title: '版本', key: 'version', width: 140, ellipsis: true },
+]
+
 function onDHCPChange(val: boolean) {
   form.dhcp = val
   if (val) {
@@ -222,6 +257,18 @@ function onIPv4Change(val: string) {
   form.ipv4 = val
   if (val && form.dhcp) {
     form.dhcp = false
+  }
+}
+
+function validateIpv4ForSave(errors: string[]) {
+  const ipv4 = form.ipv4.trim()
+  const ipv4Pattern = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/
+  if (!form.dhcp && !ipv4) {
+    errors.push('未启用 DHCP 时必须填写本机 IPv4。')
+    return
+  }
+  if (ipv4 && !ipv4Pattern.test(ipv4)) {
+    errors.push('本机 IPv4 格式不正确，请使用形如 10.144.144.1 的地址。')
   }
 }
 
@@ -440,13 +487,7 @@ async function save() {
       errors.push('请至少填写一个初始节点（ET_PEERS，对应 peers[].uri）。')
     }
   }
-  const ipv4 = form.ipv4.trim()
-  if (ipv4) {
-    const ipv4Pattern = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/
-    if (!ipv4Pattern.test(ipv4)) {
-      errors.push('本机 IPv4 格式不正确，请使用形如 10.144.144.1 的地址。')
-    }
-  }
+  validateIpv4ForSave(errors)
   const cidrPattern = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}\/([0-9]|[12][0-9]|3[0-2])$/
   if (form.proxy_networks.trim()) {
     const items = form.proxy_networks
@@ -484,11 +525,7 @@ async function saveAndRestart() {
     if (!form.network_secret.trim()) errors.push('请填写网络密钥。')
     if (networkMode.value !== 'standalone' && !form.peers.trim()) errors.push('请至少填写一个初始节点。')
   }
-  const ipv4 = form.ipv4.trim()
-  if (ipv4) {
-    const ipv4Pattern = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/
-    if (!ipv4Pattern.test(ipv4)) errors.push('本机 IPv4 格式不正确。')
-  }
+  validateIpv4ForSave(errors)
   const cidrPattern = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}\/([0-9]|[12][0-9]|3[0-2])$/
   if (form.proxy_networks.trim()) {
     const items = form.proxy_networks.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean)
@@ -854,6 +891,9 @@ onMounted(async () => {
     cliRawMetaError,
     cliRawLoading,
     loadCliRaw,
+    parsedCliPeerRows,
+    cliPeerSummary,
+    cliPeerColumns,
     profiles,
     activeProfileId,
     newProfileName,
