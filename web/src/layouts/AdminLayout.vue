@@ -1,6 +1,6 @@
 <template>
   <n-layout
-    class="app-layout min-h-screen bg-transparent bg-gradient-to-b from-slate-100 via-sky-50 via-sky-100/50 to-slate-100"
+    class="app-layout min-h-screen bg-white"
   >
     <n-layout-header
       class="app-header sticky top-0 z-40 border-b border-white/40 bg-white/65 shadow-sm shadow-slate-900/5 backdrop-blur-xl supports-[backdrop-filter]:bg-white/55"

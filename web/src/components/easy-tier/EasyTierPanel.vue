@@ -226,7 +226,7 @@
       <div class="node-config-modal-body">
       <n-space vertical :size="12">
         <p class="status-hint" style="margin: 0">
-          先完成网络名、网络密钥与初始节点配置，再进行启动/重启操作。初始节点支持逗号或换行分隔多个地址。
+          推荐步骤：1）先填写网络名、网络密钥和初始节点；2）点击“保存并重启”；3）回到状态卡查看 Peer 常驻信息与在网信息。
         </p>
         <n-alert type="info" title="节点连接能力">
           当前配置支持同时填写多个初始节点地址（ET_PEERS），系统会按逗号/换行自动识别。

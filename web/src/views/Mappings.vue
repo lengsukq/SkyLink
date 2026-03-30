@@ -1,17 +1,20 @@
 <template>
-  <div>
+  <div class="mappings-page">
     <page-header
       title="映射管理"
-      description="管理域名到后端服务的映射，可选配合 Cloudflare CNAME 一键创建。CF 状态基于 Cloudflare 页「获取最新」的缓存，若未同步请先到 Cloudflare 页拉取。"
+      description="管理域名到后端服务的映射。即使未配置 Cloudflare，也可以正常使用本地映射；一键映射仅在 Cloudflare 可用时开放。"
     >
       <template #actions>
         <n-space wrap :size="8">
           <n-button type="primary" size="small" @click="showAdd = true">添加映射</n-button>
-          <n-button size="small" @click="openOneClick">一键映射（含 CF CNAME）</n-button>
+          <n-button size="small" :disabled="!isCfReady" :title="cfDisabledHint" @click="openOneClick">一键映射（含 CF CNAME）</n-button>
           <n-button size="small" @click="load">刷新</n-button>
         </n-space>
       </template>
     </page-header>
+    <n-alert v-if="!isCfReady" type="info" class="page-section" title="Cloudflare 未配置">
+      当前可继续使用“添加映射”创建本地反向代理；若需“一键映射（含 CF CNAME）”，请先在页面右上角添加并选择 Cloudflare 账号。
+    </n-alert>
     <n-card class="page-section page-card">
       <n-spin :show="loading">
         <n-data-table
@@ -201,8 +204,11 @@ const meshSelectedIpEdit = ref<string | null>(null)
 const meshPortEdit = ref<number>(3000)
 
 const settings = ref<FrpSettings>({ frp_cname_target: '' })
+const cfLoadFailed = ref(false)
 
 const frpCnameTarget = computed(() => (settings.value.frp_cname_target || '').trim())
+const isCfReady = computed(() => !cfLoadFailed.value && (zones.value || []).length > 0)
+const cfDisabledHint = computed(() => (isCfReady.value ? '' : '请先配置并选择 Cloudflare 账号'))
 
 async function loadMeshIps() {
   try {
@@ -335,10 +341,12 @@ async function load() {
 
 async function loadZones() {
   try {
-    const { data } = await api.get('/cf/zones')
+    const { data } = await api.get('/cf/zones', { silentError: true } as any)
     zones.value = data.zones || []
+    cfLoadFailed.value = false
   } catch {
     zones.value = []
+    cfLoadFailed.value = true
   }
 }
 
@@ -351,7 +359,7 @@ async function onAdd() {
 }
 
 function openOneClick() {
-  if ((zones.value || []).length === 0) {
+  if (!isCfReady.value) {
     showNoCfHint.value = true
     return
   }
@@ -421,3 +429,11 @@ onMounted(() => {
   loadSettings()
 })
 </script>
+
+<style scoped>
+.mappings-page {
+  min-height: calc(100vh - 64px);
+  padding-bottom: 24px;
+  background: #ffffff;
+}
+</style>
