@@ -166,12 +166,12 @@ import PageHeader from '../components/PageHeader.vue'
 import EmptyState from '../components/EmptyState.vue'
 import CfAccountFormModal from '../components/CfAccountFormModal.vue'
 import { cfCurrentAccountIdKey, refreshCfStateKey } from '../types/cfContext'
-import type { MappingItem, CfZone, CfZonesResponse, EasyTierStatusAllResponse, OneClickMappingRequest } from '../types/mappings'
+import type { MappingItem, CfZone, CfZonesResponse, OneClickMappingRequest } from '../types/mappings'
 import { useMappingsCrud } from '../composables/mappings/useMappingsCrud'
+import { useMappingsMeshHelper } from '../composables/mappings/useMappingsMeshHelper'
 
 const router = useRouter()
 
-type MeshIpOption = { label: string; value: string }
 type FrpSettings = { frp_cname_target: string }
 type CfStatusType = 'default' | 'success' | 'warning'
 type CfStatus = { text: string; type: CfStatusType }
@@ -197,11 +197,30 @@ const cfCurrentAccountId = inject(cfCurrentAccountIdKey, ref<number | null>(null
 const refreshCfState = inject(refreshCfStateKey, () => Promise.resolve())
 const zoneOptions = computed(() => zones.value.map((z) => ({ label: z.name, value: z.id })))
 
-const meshIpOptions = ref<MeshIpOption[]>([])
-const meshSelectedIp = ref<string | null>(null)
-const meshPort = ref<number>(3000)
-const meshSelectedIpEdit = ref<string | null>(null)
-const meshPortEdit = ref<number>(3000)
+const addBackendRef = computed({
+  get: () => addForm.value.backend,
+  set: (v: string) => {
+    addForm.value.backend = v
+  },
+})
+const editBackendRef = computed({
+  get: () => editForm.value.backend,
+  set: (v: string) => {
+    editForm.value.backend = v
+  },
+})
+const {
+  meshIpOptions,
+  meshSelectedIp,
+  meshPort,
+  meshSelectedIpEdit,
+  meshPortEdit,
+  loadMeshIps,
+  fillBackendFromMesh,
+} = useMappingsMeshHelper({
+  addBackend: addBackendRef,
+  editBackend: editBackendRef,
+})
 
 const settings = ref<FrpSettings>({ frp_cname_target: '' })
 const cfLoadFailed = ref(false)
@@ -209,24 +228,6 @@ const cfLoadFailed = ref(false)
 const frpCnameTarget = computed(() => (settings.value.frp_cname_target || '').trim())
 const isCfReady = computed(() => !cfLoadFailed.value && (zones.value || []).length > 0)
 const cfDisabledHint = computed(() => (isCfReady.value ? '' : '请先配置并选择 Cloudflare 账号'))
-
-async function loadMeshIps() {
-  try {
-    const { data } = await api.get<EasyTierStatusAllResponse>('/easytier/status/all')
-    const ips: MeshIpOption[] = []
-    ;(data?.profiles || []).forEach((item) => {
-      const st = item?.status
-      if (!item?.ok || !st) return
-      if (st?.self_ipv4) ips.push({ label: `${st.self_ipv4} (${item?.name || item?.id || '本机'})`, value: st.self_ipv4 })
-      ;(st?.peers || []).forEach((p) => {
-        if (p.ipv4 && p.ipv4 !== st?.self_ipv4) ips.push({ label: `${p.ipv4} (${item?.name || item?.id || 'peer'})`, value: p.ipv4 })
-      })
-    })
-    meshIpOptions.value = ips
-  } catch (_) {
-    meshIpOptions.value = []
-  }
-}
 
 async function loadSettings() {
   try {
@@ -237,15 +238,6 @@ async function loadSettings() {
   } catch (_) {
     settings.value = { frp_cname_target: '' }
   }
-}
-
-function fillBackendFromMesh(which: 'add' | 'edit') {
-  const ip = which === 'add' ? meshSelectedIp.value : meshSelectedIpEdit.value
-  const port = which === 'add' ? meshPort.value : meshPortEdit.value
-  if (!ip) return
-  const url = `http://${ip}:${port || 3000}`
-  if (which === 'add') addForm.value.backend = url
-  else editForm.value.backend = url
 }
 
 watch([showAdd, showEdit], ([add, edit]) => {

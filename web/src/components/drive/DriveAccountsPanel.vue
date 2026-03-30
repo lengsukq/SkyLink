@@ -139,8 +139,8 @@ import LocalPathInput from '../LocalPathInput.vue'
 import DriveAccountsToolbar from './DriveAccountsToolbar.vue'
 import api from '../../api/client'
 import { notifyError, notifySuccess } from '../../ui/notify'
-import { copyToClipboard } from '../../utils/clipboard'
 import { formatBytes, formatBytesAsG, gbToBytes, bytesToGbForInput } from '../../utils/storage'
+import { useDriveIssuedPassword } from '../../composables/drive/useDriveIssuedPassword'
 
 type DriveAccount = {
   id: number
@@ -181,10 +181,7 @@ const editForm = ref({
 
 const showResetPwd = ref(false)
 const resetAccountId = ref<number | null>(null)
-const resetPwdInput = ref('')
-
-const showIssued = ref(false)
-const issuedPassword = ref('')
+const { resetPwdInput, showIssued, issuedPassword, fillRandomPwd, copyIssuedPassword } = useDriveIssuedPassword()
 
 const columns = computed(() => [
   { title: '用户名', key: 'username', width: 140 },
@@ -289,19 +286,6 @@ function openResetPwd(id: number) {
   resetAccountId.value = id
   resetPwdInput.value = ''
   showResetPwd.value = true
-}
-
-function fillRandomPwd() {
-  resetPwdInput.value = randomPassword(18)
-}
-
-function randomPassword(length: number): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
-  const arr = new Uint32Array(length)
-  crypto.getRandomValues(arr)
-  let s = ''
-  for (let i = 0; i < length; i++) s += chars[arr[i]! % chars.length]
-  return s
 }
 
 async function refresh() {
@@ -436,14 +420,6 @@ async function remove(id: number) {
   }
 }
 
-async function copyIssuedPassword() {
-  try {
-    await copyToClipboard(issuedPassword.value)
-    notifySuccess('已复制', '密码已复制到剪贴板')
-  } catch (e: any) {
-    notifyError('复制失败', e?.message || String(e))
-  }
-}
 </script>
 
 <style scoped>
