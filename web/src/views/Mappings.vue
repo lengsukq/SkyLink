@@ -166,17 +166,17 @@ import PageHeader from '../components/PageHeader.vue'
 import EmptyState from '../components/EmptyState.vue'
 import CfAccountFormModal from '../components/CfAccountFormModal.vue'
 import { cfCurrentAccountIdKey, refreshCfStateKey } from '../types/cfContext'
+import type { MappingItem, CfZone, CfZonesResponse, EasyTierStatusAllResponse, OneClickMappingRequest } from '../types/mappings'
+import { useMappingsCrud } from '../composables/mappings/useMappingsCrud'
 
 const router = useRouter()
 
-type Zone = { id: number | string; name: string }
 type MeshIpOption = { label: string; value: string }
 type FrpSettings = { frp_cname_target: string }
 type CfStatusType = 'default' | 'success' | 'warning'
 type CfStatus = { text: string; type: CfStatusType }
 
-const list = ref<any[]>([])
-const loading = ref(false)
+const { list, loading, load, addMapping, updateMapping, deleteMapping } = useMappingsCrud()
 const showAdd = ref(false)
 const showEdit = ref(false)
 const showOneClick = ref(false)
@@ -192,7 +192,7 @@ const oneClickForm = ref<{ host: string; backend: string; zone_id: string; cname
 })
 const editForm = ref<{ id: number | null; host: string; backend: string }>({ id: null, host: '', backend: '' })
 
-const zones = ref<Zone[]>([])
+const zones = ref<CfZone[]>([])
 const cfCurrentAccountId = inject(cfCurrentAccountIdKey, ref<number | null>(null))
 const refreshCfState = inject(refreshCfStateKey, () => Promise.resolve())
 const zoneOptions = computed(() => zones.value.map((z) => ({ label: z.name, value: z.id })))
@@ -212,13 +212,13 @@ const cfDisabledHint = computed(() => (isCfReady.value ? '' : '请先配置并�
 
 async function loadMeshIps() {
   try {
-    const { data } = await api.get('/easytier/status/all')
+    const { data } = await api.get<EasyTierStatusAllResponse>('/easytier/status/all')
     const ips: MeshIpOption[] = []
-    ;(data?.profiles || []).forEach((item: any) => {
+    ;(data?.profiles || []).forEach((item) => {
       const st = item?.status
       if (!item?.ok || !st) return
       if (st?.self_ipv4) ips.push({ label: `${st.self_ipv4} (${item?.name || item?.id || '本机'})`, value: st.self_ipv4 })
-      ;(st?.peers || []).forEach((p: any) => {
+      ;(st?.peers || []).forEach((p) => {
         if (p.ipv4 && p.ipv4 !== st?.self_ipv4) ips.push({ label: `${p.ipv4} (${item?.name || item?.id || 'peer'})`, value: p.ipv4 })
       })
     })
@@ -281,7 +281,7 @@ const columns = computed(() => [
     title: '域名',
     key: 'host',
     ellipsis: true,
-    render(row: any) {
+    render(row: MappingItem) {
       return h(
         NEllipsis,
         { style: 'max-width: 260px' },
@@ -293,7 +293,7 @@ const columns = computed(() => [
     title: '后端',
     key: 'backend',
     ellipsis: true,
-    render(row: any) {
+    render(row: MappingItem) {
       return h(
         NEllipsis,
         { style: 'max-width: 320px' },
@@ -305,7 +305,7 @@ const columns = computed(() => [
     title: 'CF 状态',
     key: 'cfStatus',
     width: 100,
-    render(row: any) {
+    render(row: MappingItem) {
       const status = getCfStatus(row.host)
       return h(NTag, { type: status.type, size: 'small' }, { default: () => status.text })
     },
@@ -329,19 +329,9 @@ const columns = computed(() => [
   },
 ])
 
-async function load() {
-  loading.value = true
-  try {
-    const { data } = await api.get('/mappings')
-    list.value = data?.list || []
-  } finally {
-    loading.value = false
-  }
-}
-
 async function loadZones() {
   try {
-    const { data } = await api.get('/cf/zones', { silentError: true } as any)
+    const { data } = await api.get<CfZonesResponse>('/cf/zones', { silentError: true } as any)
     zones.value = data.zones || []
     cfLoadFailed.value = false
   } catch {
@@ -352,9 +342,8 @@ async function loadZones() {
 
 async function onAdd() {
   if (!addForm.value.host?.trim() || !addForm.value.backend?.trim()) return false
-  await api.post('/mappings', addForm.value)
+  await addMapping(addForm.value)
   addForm.value = { host: '', backend: '' }
-  await load()
   return true
 }
 
@@ -388,12 +377,13 @@ async function onOneClick() {
     }
   }
 
-  await api.post('/mappings/one-click', {
+  const payload: OneClickMappingRequest = {
     host: fullHost,
     backend: oneClickForm.value.backend,
     zone_id: oneClickForm.value.zone_id,
     cname_target: oneClickForm.value.cname_target,
-  })
+  }
+  await api.post('/mappings/one-click', payload)
   const zoneId = oneClickForm.value.zone_id
   if (zoneId && cfCurrentAccountId.value != null) {
     try {
@@ -413,14 +403,12 @@ function goToSettings() {
 
 async function onEdit() {
   if (!editForm.value.backend?.trim()) return false
-  await api.put(`/mappings/${editForm.value.id}`, { backend: editForm.value.backend })
-  await load()
+  await updateMapping(Number(editForm.value.id), editForm.value.backend)
   return true
 }
 
 async function remove(id: number) {
-  await api.delete(`/mappings/${id}`)
-  await load()
+  await deleteMapping(id)
 }
 
 onMounted(() => {

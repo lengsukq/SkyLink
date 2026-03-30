@@ -31,15 +31,23 @@ func Load(path string) (*App, *Cloudflare, *EasyTier, error) {
 				CF       *Cloudflare `yaml:"cloudflare"`
 				EasyTier *EasyTier   `yaml:"easytier"`
 			}
+			var raw struct {
+				App      map[string]any `yaml:"app"`
+				EasyTier map[string]any `yaml:"easytier"`
+			}
 			if err := yaml.Unmarshal(data, &file); err == nil {
+				_ = yaml.Unmarshal(data, &raw)
+				appHasRequireAdmin := raw.App != nil && hasYAMLKey(raw.App, "require_admin")
+				easyTierHasEnabled := raw.EasyTier != nil && hasYAMLKey(raw.EasyTier, "enabled")
+				easyTierHasDaemonEnabled := raw.EasyTier != nil && hasYAMLKey(raw.EasyTier, "daemon_enabled")
 				if file.App != nil {
-					mergeApp(app, file.App)
+					mergeApp(app, file.App, appHasRequireAdmin)
 				}
 				if file.CF != nil {
 					cf = file.CF
 				}
 				if file.EasyTier != nil {
-					mergeEasyTier(et, file.EasyTier)
+					mergeEasyTier(et, file.EasyTier, easyTierHasEnabled, easyTierHasDaemonEnabled)
 				}
 			}
 		}
@@ -81,7 +89,7 @@ func Load(path string) (*App, *Cloudflare, *EasyTier, error) {
 	return app, cf, et, nil
 }
 
-func mergeApp(dst, src *App) {
+func mergeApp(dst, src *App, hasRequireAdmin bool) {
 	if src.ProxyPort > 0 {
 		dst.ProxyPort = src.ProxyPort
 	}
@@ -94,8 +102,8 @@ func mergeApp(dst, src *App) {
 	if src.ConfigPath != "" {
 		dst.ConfigPath = src.ConfigPath
 	}
-	if src.RequireAdmin {
-		dst.RequireAdmin = true
+	if hasRequireAdmin {
+		dst.RequireAdmin = src.RequireAdmin
 	}
 }
 
@@ -109,18 +117,18 @@ func truthyEnv(s string) bool {
 	}
 }
 
-func mergeEasyTier(dst, src *EasyTier) {
+func mergeEasyTier(dst, src *EasyTier, hasEnabled bool, hasDaemonEnabled bool) {
 	if src.RPCAddress != "" {
 		dst.RPCAddress = src.RPCAddress
 	}
 	if src.EnvFilePath != "" {
 		dst.EnvFilePath = src.EnvFilePath
 	}
-	if src.Enabled {
-		dst.Enabled = true
+	if hasEnabled {
+		dst.Enabled = src.Enabled
 	}
-	if src.DaemonEnabled {
-		dst.DaemonEnabled = true
+	if hasDaemonEnabled {
+		dst.DaemonEnabled = src.DaemonEnabled
 	}
 	if src.DaemonPath != "" {
 		dst.DaemonPath = src.DaemonPath
@@ -128,6 +136,11 @@ func mergeEasyTier(dst, src *EasyTier) {
 	if src.RuntimeDir != "" {
 		dst.RuntimeDir = src.RuntimeDir
 	}
+}
+
+func hasYAMLKey(m map[string]any, key string) bool {
+	_, ok := m[key]
+	return ok
 }
 
 func parseInt(s string) int {

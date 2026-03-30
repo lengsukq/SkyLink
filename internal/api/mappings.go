@@ -10,10 +10,10 @@ import (
 func (s *Server) listMappings(c *gin.Context) {
 	list, err := s.store.ListMappings()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, errorResponse{Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"list": list})
+	c.JSON(http.StatusOK, mappingsListResponse{List: list})
 }
 
 func (s *Server) addMapping(c *gin.Context) {
@@ -22,16 +22,16 @@ func (s *Server) addMapping(c *gin.Context) {
 		Backend string `json:"backend"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || req.Host == "" || req.Backend == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "host and backend required"})
+		c.JSON(http.StatusBadRequest, errorResponse{Error: "host and backend required"})
 		return
 	}
 	_, err := s.store.AddMapping(req.Host, req.Backend)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, errorResponse{Error: err.Error()})
 		return
 	}
 	s.reloadProxy()
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusOK, okResponse{OK: true})
 }
 
 func (s *Server) updateMapping(c *gin.Context) {
@@ -43,15 +43,15 @@ func (s *Server) updateMapping(c *gin.Context) {
 		Backend string `json:"backend"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil || req.Backend == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "backend required"})
+		c.JSON(http.StatusBadRequest, errorResponse{Error: "backend required"})
 		return
 	}
 	if err := s.store.UpdateMapping(id, req.Backend); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, errorResponse{Error: err.Error()})
 		return
 	}
 	s.reloadProxy()
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusOK, okResponse{OK: true})
 }
 
 func (s *Server) deleteMapping(c *gin.Context) {
@@ -60,11 +60,11 @@ func (s *Server) deleteMapping(c *gin.Context) {
 		return
 	}
 	if err := s.store.DeleteMapping(id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, errorResponse{Error: err.Error()})
 		return
 	}
 	s.reloadProxy()
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusOK, okResponse{OK: true})
 }
 
 func (s *Server) oneClickMapping(c *gin.Context) {
@@ -76,11 +76,11 @@ func (s *Server) oneClickMapping(c *gin.Context) {
 		Proxied     *bool  `json:"proxied"`      // 可选：覆盖默认 proxied
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid body"})
 		return
 	}
 	if req.Host == "" || req.Backend == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "host and backend required"})
+		c.JSON(http.StatusBadRequest, errorResponse{Error: "host and backend required"})
 		return
 	}
 
@@ -93,7 +93,7 @@ func (s *Server) oneClickMapping(c *gin.Context) {
 
 	// 1) 本地反代
 	if _, err := s.store.AddMapping(req.Host, req.Backend); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "add mapping: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, errorResponse{Error: "add mapping: " + err.Error()})
 		return
 	}
 	s.reloadProxy()
@@ -102,7 +102,7 @@ func (s *Server) oneClickMapping(c *gin.Context) {
 	// 使用当前激活的 Cloudflare 账号（如未配置则仅完成本地映射）
 	cfClient, err := s.cfClientForCurrentAccount()
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"ok": true, "warning": "mapping added but cloudflare not configured: " + err.Error()})
+		c.JSON(http.StatusOK, warningOKResponse{OK: true, Warning: "mapping added but cloudflare not configured: " + err.Error()})
 		return
 	}
 	if req.ZoneID != "" && req.CNAMETarget != "" {
@@ -119,10 +119,10 @@ func (s *Server) oneClickMapping(c *gin.Context) {
 		}
 		_, err := cfClient.EnsureCNAMEWithProxied(req.ZoneID, name, req.CNAMETarget, proxied)
 		if err != nil {
-			c.JSON(http.StatusOK, gin.H{"ok": true, "warning": "mapping added but cf cname failed: " + err.Error()})
+			c.JSON(http.StatusOK, warningOKResponse{OK: true, Warning: "mapping added but cf cname failed: " + err.Error()})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"ok": true})
+		c.JSON(http.StatusOK, okResponse{OK: true})
 		return
 	}
 
@@ -142,5 +142,5 @@ func (s *Server) oneClickMapping(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusOK, okResponse{OK: true})
 }

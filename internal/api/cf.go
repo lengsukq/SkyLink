@@ -12,30 +12,30 @@ import (
 func (s *Server) listZones(c *gin.Context) {
 	cfClient, err := s.cfClientForCurrentAccount()
 	if err != nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		c.JSON(http.StatusServiceUnavailable, errorResponse{Error: err.Error()})
 		return
 	}
 	zones, err := cfClient.ListZones()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, errorResponse{Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"zones": zones})
+	c.JSON(http.StatusOK, cfZonesResponse{Zones: zones})
 }
 
 func (s *Server) listDNSRecords(c *gin.Context) {
 	zoneID := c.Param("zoneId")
 	cfClient, err := s.cfClientForCurrentAccount()
 	if err != nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		c.JSON(http.StatusServiceUnavailable, errorResponse{Error: err.Error()})
 		return
 	}
 	records, err := cfClient.ListDNSRecords(zoneID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, errorResponse{Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"records": records})
+	c.JSON(http.StatusOK, cfDNSRecordsResponse{Records: records})
 }
 
 func (s *Server) createDNSRecord(c *gin.Context) {

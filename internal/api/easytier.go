@@ -643,35 +643,21 @@ func (s *Server) getEasyTierCLIOutputByProfile(c *gin.Context) {
 
 func (s *Server) respondEasyTierCLIOutput(c *gin.Context, cfg store.EasyTierConfig) {
 	if !easytier.EasyTierSupportedOnHost() {
-		c.JSON(http.StatusOK, gin.H{
-			"ok":   false,
-			"hint": easytier.HostNotSupportedHint,
-		})
+		c.JSON(http.StatusOK, easyTierCLIOutputResponse{OK: false, Hint: easytier.HostNotSupportedHint})
 		return
 	}
 	target := strings.TrimSpace(c.Query("target"))
 	if _, ok := easyTierCLIRawTargets[target]; !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "target must be one of: peer, route, node, version"})
+		c.JSON(http.StatusBadRequest, errorResponse{Error: "target must be one of: peer, route, node, version"})
 		return
 	}
 	client := s.easyTierRPCClient(c.Request.Context(), cfg)
 	stdout, stderr, err := client.CLISubcommandRaw(target)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"ok":     false,
-			"target": target,
-			"stdout": stdout,
-			"stderr": stderr,
-			"error":  err.Error(),
-		})
+		c.JSON(http.StatusOK, easyTierCLIOutputResponse{OK: false, Target: target, Stdout: stdout, Stderr: stderr, Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
-		"ok":     true,
-		"target": target,
-		"stdout": stdout,
-		"stderr": stderr,
-	})
+	c.JSON(http.StatusOK, easyTierCLIOutputResponse{OK: true, Target: target, Stdout: stdout, Stderr: stderr})
 }
 
 func (s *Server) respondEasyTierStatus(c *gin.Context, cfg store.EasyTierConfig) {

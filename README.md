@@ -101,6 +101,8 @@ go build -o skylink ./cmd/server
 - `npm run type-check`：TS/Vue 类型检查
 - `npm run check:all`：完整检查（类型、测试、构建）
 
+> 前端包管理器建议统一使用 `npm`（项目 CI 也按 `npm ci` 执行）。
+
 ### 后端测试
 
 ```bash
@@ -210,6 +212,11 @@ services:
 - 支持按 tag（`v*`）或手动触发构建
 - 推送多架构镜像到 GHCR / Docker Hub
 - 生成 Release 附件（Linux `amd64/arm64` 二进制与校验和）
+
+质量门工作流（`.github/workflows/quality-gates.yml`）：
+
+- PR 与 `main` 分支提交会执行后端 `go test ./...`
+- 前端执行 `npm run type-check`、`npm run test`、`npm run build`
 
 ## 许可证
 
