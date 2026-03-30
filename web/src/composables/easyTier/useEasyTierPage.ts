@@ -3,6 +3,7 @@
  */
 import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 import api from '../../api/client'
+import { notifySuccess } from '../../ui/notify'
 import { useEasyTierPeerResident } from './useEasyTierPeerResident'
 import { cliPeerColumns, nodeTableColumns, routeColumns } from './easyTierTableColumns'
 import { useEasyTierRuntime } from './useEasyTierRuntime'
@@ -197,7 +198,9 @@ const {
 } = useEasyTierProfiles({
   imageTag: computed(() => form.image_tag),
   loadConfig,
-  loadStatus,
+  loadStatus: async () => {
+    await loadStatus()
+  },
   loadDaemonLogs: async () => {
     await loadDaemonLogs()
   },
