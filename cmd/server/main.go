@@ -86,7 +86,6 @@ func main() {
 			log.Fatal("admin server:", err)
 		}
 	}()
-	go openAdminUI(adminPort)
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)

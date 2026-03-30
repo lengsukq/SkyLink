@@ -1,8 +1,15 @@
-# SkyLink Windows dev: opens two windows (Air + Vite). Run: dev-windows.cmd
-# All messages are ASCII-only so default system encoding cannot break parsing.
+# SkyLink Windows dev: optional embed sync, then backend (Air) + frontend (Vite, default).
+#
+# Run: dev-windows.cmd
+#   (default)         npm run build + sync static/web + Air + Vite on :5173
+#   -SkipWebBuild      skip npm build/sync (faster; use Vite-only UI at http://localhost:5173)
+#   -SkipNpmInstall    skip npm install in sync script when node_modules exists; Vite window still ensures deps for dev
+#   -NoVite             only Air (single window); open http://127.0.0.1:19080/ for embedded UI
 
 param(
-    [switch] $SkipNpmInstall
+    [switch] $SkipNpmInstall,
+    [switch] $SkipWebBuild,
+    [switch] $NoVite
 )
 
 $ErrorActionPreference = "Stop"
@@ -12,6 +19,7 @@ $projectRoot = Resolve-Path (Join-Path $scriptDir "..")
 $webDir = Join-Path $projectRoot.Path "web"
 $backendPs1 = Join-Path $scriptDir "dev-windows-backend.ps1"
 $webPs1 = Join-Path $scriptDir "dev-windows-web.ps1"
+$syncPs1 = Join-Path $scriptDir "sync-web-to-static.ps1"
 
 function Test-Cmd($name) {
     return [bool](Get-Command $name -ErrorAction SilentlyContinue)
@@ -21,13 +29,28 @@ if (-not (Test-Cmd "go")) {
     Write-Host "go not found. Install Go and add it to PATH." -ForegroundColor Red
     exit 1
 }
-if (-not (Test-Cmd "npm")) {
+
+$needNpm = (-not $SkipWebBuild) -or (-not $NoVite)
+if ($needNpm -and -not (Test-Cmd "npm")) {
     Write-Host "npm not found. Install Node.js and add it to PATH." -ForegroundColor Red
     exit 1
 }
 
-if (-not $SkipNpmInstall) {
-    if (-not (Test-Path (Join-Path $webDir "node_modules"))) {
+if (-not $SkipWebBuild) {
+    Write-Host ""
+    Write-Host "Packaging latest web into static/web/dist (go:embed)..." -ForegroundColor Cyan
+    if ($SkipNpmInstall) {
+        & $syncPs1 -SkipNpmInstall
+    }
+    else {
+        & $syncPs1
+    }
+    if (-not $?) { exit 1 }
+    Write-Host ""
+}
+
+if (-not $NoVite) {
+    if (-not $SkipNpmInstall -and -not (Test-Path (Join-Path $webDir "node_modules"))) {
         Write-Host "[web] node_modules missing, running npm install..." -ForegroundColor Yellow
         Push-Location $webDir
         try {
@@ -40,12 +63,13 @@ if (-not $SkipNpmInstall) {
     }
 }
 
-Write-Host ""
-Write-Host "Opening two windows:" -ForegroundColor Cyan
+Write-Host "Opening windows:" -ForegroundColor Cyan
 Write-Host "  1) Backend (Air) - admin :19080, proxy :18080" -ForegroundColor Gray
-Write-Host "  2) Web (Vite) - http://localhost:5173 , /api -> :19080" -ForegroundColor Gray
+if (-not $NoVite) {
+    Write-Host "  2) Web (Vite)    - http://localhost:5173  (/api -> :19080)" -ForegroundColor Gray
+}
 Write-Host ""
-Write-Host "Open in browser: http://localhost:5173/" -ForegroundColor Green
+Write-Host "Use the Vite URL for daily dev (HMR). Embedded UI: http://127.0.0.1:19080/" -ForegroundColor Green
 Write-Host "Close each window to stop that process." -ForegroundColor DarkGray
 Write-Host ""
 
@@ -59,17 +83,18 @@ $psArgs = @(
 )
 Start-Process -FilePath "powershell.exe" -WorkingDirectory $projectRoot.Path -ArgumentList $psArgs
 
-Start-Sleep -Milliseconds 500
+if (-not $NoVite) {
+    Start-Sleep -Milliseconds 500
+    $psArgsWeb = @(
+        "-NoExit"
+        "-NoProfile"
+        "-ExecutionPolicy"
+        "Bypass"
+        "-File"
+        $webPs1
+    )
+    Start-Process -FilePath "powershell.exe" -WorkingDirectory $webDir -ArgumentList $psArgsWeb
+}
 
-$psArgsWeb = @(
-    "-NoExit"
-    "-NoProfile"
-    "-ExecutionPolicy"
-    "Bypass"
-    "-File"
-    $webPs1
-)
-Start-Process -FilePath "powershell.exe" -WorkingDirectory $webDir -ArgumentList $psArgsWeb
-
-Write-Host "Started. If no new windows appear, check security software blocking Start-Process." -ForegroundColor Yellow
+Write-Host "Started." -ForegroundColor Yellow
 Write-Host ""

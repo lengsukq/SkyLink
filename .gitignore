@@ -19,6 +19,9 @@ build-errors.log
 web/node_modules/
 web/dist/
 
+# go:embed 前端产物（由 npm run build + scripts/sync-web-to-static.ps1 或 package 生成；克隆后需先同步再 go build）
+static/web/dist/
+
 # JetBrains
 .idea/
 

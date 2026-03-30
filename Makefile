@@ -1,4 +1,8 @@
-.PHONY: dev run build package-win
+.PHONY: dev run build package-win sync-web
+
+# Windows: .\scripts\sync-web-to-static.ps1 — 构建 web 并复制到 static/web/dist（go:embed），开发前可单独执行
+sync-web:
+	powershell -ExecutionPolicy Bypass -File .\scripts\sync-web-to-static.ps1
 
 # 开发：热重载（无需单独安装 air）
 dev:
