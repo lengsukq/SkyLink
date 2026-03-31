@@ -1,9 +1,7 @@
 package api
 
 import (
-	"context"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -22,9 +20,7 @@ func (s *Server) driveIndexRebuild(c *gin.Context) {
 		driveError(c, http.StatusNotFound, driveErrNotFound, "not found")
 		return
 	}
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
-	defer cancel()
-	if err := s.driveIndexer.StartRebuild(ctx, s.store, acc); err != nil {
+	if err := s.driveIndexer.StartRebuild(s.store, acc); err != nil {
 		driveError(c, http.StatusBadRequest, driveErrInvalidRequest, err.Error())
 		return
 	}
@@ -41,16 +37,14 @@ func (s *Server) driveIndexStatus(c *gin.Context) {
 }
 
 // driveUserIndexRebuild 供网盘 JWT 调用：重建当前账号的索引，使列表与磁盘一致（与管理员 POST /accounts/:id/index/rebuild 行为相同）。
-// 使用较长超时，避免大目录在重建 walk 时被 5s 父 context 提前取消。
+// 实际超时由 indexer.Manager 在后台 goroutine 内持有，与 HTTP handler 返回无关。
 func (s *Server) driveUserIndexRebuild(c *gin.Context) {
 	acc := currentDriveAccount(c)
 	if acc == nil {
 		driveError(c, http.StatusUnauthorized, driveErrUnauthorized, "unauthorized")
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Hour)
-	defer cancel()
-	if err := s.driveIndexer.StartRebuild(ctx, s.store, acc); err != nil {
+	if err := s.driveIndexer.StartRebuild(s.store, acc); err != nil {
 		driveError(c, http.StatusBadRequest, driveErrInvalidRequest, err.Error())
 		return
 	}

@@ -13,6 +13,10 @@ import (
 	"github.com/skylink/skylink/internal/store"
 )
 
+// rebuildJobTimeout 限制单次索引重建的最长运行时间；必须独立于 HTTP 请求生命周期，
+// 否则 handler 在返回时 defer cancel 会立即取消子 context，导致 walk 几乎总是 context.Canceled。
+const rebuildJobTimeout = 2 * time.Hour
+
 type Status struct {
 	Running      bool   `json:"running"`
 	StartedAt    int64  `json:"started_at"`
@@ -44,7 +48,7 @@ func (m *Manager) GetStatus(accountID int64) Status {
 	return Status{}
 }
 
-func (m *Manager) StartRebuild(ctx context.Context, st *store.Store, acc *store.DriveAccount) error {
+func (m *Manager) StartRebuild(st *store.Store, acc *store.DriveAccount) error {
 	if st == nil || acc == nil || acc.ID <= 0 {
 		return errors.New("invalid args")
 	}
@@ -53,13 +57,14 @@ func (m *Manager) StartRebuild(ctx context.Context, st *store.Store, acc *store.
 		m.mu.Unlock()
 		return errors.New("rebuild already running")
 	}
-	runCtx, cancel := context.WithCancel(ctx)
-	m.running[acc.ID] = cancel
+	runCtx, runCancel := context.WithTimeout(context.Background(), rebuildJobTimeout)
+	m.running[acc.ID] = runCancel
 	s := &Status{Running: true, StartedAt: time.Now().Unix()}
 	m.status[acc.ID] = s
 	m.mu.Unlock()
 
 	go func() {
+		defer runCancel()
 		defer func() {
 			m.mu.Lock()
 			delete(m.running, acc.ID)

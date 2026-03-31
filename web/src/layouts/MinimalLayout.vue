@@ -1,8 +1,6 @@
 <template>
-  <n-layout
-    class="app-layout min-h-screen bg-white"
-  >
-    <n-layout-header class="minimal-header" :bordered="false">
+  <n-layout class="app-layout min-h-screen bg-white">
+    <n-layout-header v-if="!isLoginRoute" class="minimal-header" :bordered="false">
       <div class="minimal-header__inner">
         <div class="minimal-header__brand">
           <sky-link-logo size="sm" />
@@ -13,8 +11,14 @@
         </div>
       </div>
     </n-layout-header>
-    <n-layout-content class="app-content app-content--login">
-      <div class="app-content__inner" :class="isDrivePortalRoute ? 'minimal-content__inner--full' : 'minimal-content__inner'">
+    <n-layout-content
+      class="app-content app-content--login"
+      :class="{ 'app-content--login-bleed': isLoginRoute }"
+    >
+      <div
+        class="app-content__inner"
+        :class="isMinimalFullWidthRoute ? 'minimal-content__inner--full' : 'minimal-content__inner'"
+      >
         <router-view />
       </div>
     </n-layout-content>
@@ -47,6 +51,15 @@ const headerDescription = computed(() => {
 })
 
 const isDrivePortalRoute = computed(() => String(route.name || '') === 'DrivePortal')
+
+const isLoginRoute = computed(() => {
+  const name = String(route.name || '')
+  return name === 'Login' || name === 'DriveLogin'
+})
+
+const isMinimalFullWidthRoute = computed(
+  () => isDrivePortalRoute.value || isLoginRoute.value,
+)
 </script>
 
 <style scoped>
@@ -111,6 +124,10 @@ const isDrivePortalRoute = computed(() => String(route.name || '') === 'DrivePor
   margin: 0;
 }
 
+.app-content--login-bleed {
+  padding: 0;
+}
+
 @media (max-width: 640px) {
   .minimal-header__inner {
     padding: 0 16px;
@@ -120,7 +137,7 @@ const isDrivePortalRoute = computed(() => String(route.name || '') === 'DrivePor
     display: none;
   }
 
-  .app-content {
+  .app-content:not(.app-content--login-bleed) {
     padding: 16px 16px 24px;
   }
 }
